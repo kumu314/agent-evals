@@ -1,0 +1,40 @@
+name: 判据误报 / 漏报
+about: 某条断言把好的判成红（误报），或明知有问题却没红（漏报）
+title: "[判据] <套件> <断言id>："
+labels: criterion-bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        本仓库文化是「看到红先怀疑判据」。你报的误报/漏报比新功能请求更值钱。
+  - type: dropdown
+    id: suite
+    attributes:
+      label: 套件
+      options: [fleet-eval, merge-eval, t2/smoke-ab]
+    validations:
+      required: true
+  - type: input
+    id: assertion
+    attributes:
+      label: 断言 id
+      description: "如 untouched.byte-identical、suite.determinism-contract"
+    validations:
+      required: true
+  - type: dropdown
+    id: direction
+    attributes:
+      label: 方向
+      options: ["误报（该绿却红）", "漏报（该红却没红）"]
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: 复现
+      description: "命令 + 关键 env（务必脱敏，不要贴 API key）+ 实际读数"
+      value: |
+        命令：
+        期望：红/绿   实际：红/绿
+    validations:
+      required: true

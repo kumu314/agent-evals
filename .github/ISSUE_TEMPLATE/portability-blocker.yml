@@ -1,0 +1,28 @@
+name: 可移植性阻塞
+about: fleet-eval / merge-eval 在我自己的机器上跑不通（默认路径、豁免白名单等本机事实）
+title: "[移植] <套件>："
+labels: portability
+body:
+  - type: markdown
+    attributes:
+      value: |
+        fleet-eval 默认值是作者本机事实，在别的机器跑不通是预期内的。你写清楚"哪里卡住、怎么绕的"，就是解耦需求（F1）的直接证据。
+  - type: dropdown
+    id: suite
+    attributes:
+      label: 套件
+      options: [fleet-eval, merge-eval, t2/smoke-ab, demo]
+    validations:
+      required: true
+  - type: textarea
+    id: blocker
+    attributes:
+      label: 卡在哪
+      description: 报错原文 / 哪个默认值或路径不合你的环境
+    validations:
+      required: true
+  - type: textarea
+    id: workaround
+    attributes:
+      label: 你怎么绕的（可选）
+      description: 设了哪个 env、改了哪行

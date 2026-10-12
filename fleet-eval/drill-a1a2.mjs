@@ -7,7 +7,8 @@
 //   A1 注入：删掉 anysearch.py 的 UTF-8 守卫        → 期望 anysearch.encoding-verdict  FAIL
 //   A2 注入：往 scan.sanity 体内塞一行 fetch(...)   → 期望 suite.determinism-contract  FAIL
 //
-// 退出码：0 = 两条都如期翻红；1 = 有 drill 未按预期工作（说明检查是假绿）。
+//   A1 另带阳性对照：守卫完好的副本走同通道应绿；不绿则环境不可信、红不算数。
+// 退出码：0 = 各 drill 全部如期；1 = 有 drill 未按预期工作（说明检查是假绿或环境不可信）。
 
 import fs from 'node:fs';
 import os from 'node:os';
@@ -18,7 +19,13 @@ import { fileURLToPath } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SUITE = path.join(HERE, 'fleet-eval.mjs');
-const ANYSEARCH = process.env.FLEET_ANYSEARCH || 'D:\\AgentHub\\sharedskills\\skills\\anysearch\\scripts\\anysearch.py';
+// F1：不写死默认路径。显式 FLEET_ANYSEARCH 优先，否则由 FLEET_SHARED 派生；两者都没有 → exit 2。
+const ANYSEARCH = process.env.FLEET_ANYSEARCH
+  || (process.env.FLEET_SHARED ? path.join(process.env.FLEET_SHARED, 'skills', 'anysearch', 'scripts', 'anysearch.py') : null);
+if (!ANYSEARCH) {
+  console.error('需给 FLEET_ANYSEARCH 或 FLEET_SHARED —— drill 不猜默认位置。');
+  process.exit(2);
+}
 const NODE = process.execPath;
 const TMP = path.join(os.tmpdir(), `fleet-drill-${Date.now()}`);
 
@@ -45,16 +52,24 @@ function makeDrillSuite(destName, extraPatch) {
     if (after === out) throw new Error('extraPatch 替换未命中');
     out = after;
   }
-  const dest = path.join(TMP, destName);
+  // F6：套件现在 import '../lib/parsers.mjs'——副本必须镜像仓库布局（fleet/ + lib/），
+  // 否则相对导入断链、drill 还没注入缺陷就先撞 TypeError。
+  fs.mkdirSync(path.join(TMP, 'fleet'), { recursive: true });
+  fs.mkdirSync(path.join(TMP, 'lib'), { recursive: true });
+  fs.copyFileSync(path.join(HERE, '..', 'lib', 'parsers.mjs'), path.join(TMP, 'lib', 'parsers.mjs'));
+  const dest = path.join(TMP, 'fleet', destName);
   fs.writeFileSync(dest, out, 'utf8');
   return dest;
 }
 
 // --only 只跑一条时，该条若 FAIL 套件会退 1；execFileSync 抛错，故从 e.stdout 取 JSON。
+// F1：套件现在必填 FLEET_SHARED。drill 缺省指 demo/fixture-clean——
+// 被断言的两条检查（anysearch / determinism）不依赖真实库内容，样例库足够喂饱 buildContext。
+const FIXTURE = process.env.FLEET_SHARED || path.join(HERE, '..', 'demo', 'fixture-clean');
 function runSuiteJson(suitePath, onlyId) {
   try {
     const out = execFileSync(NODE, [suitePath, '--only', onlyId, '--json'],
-      { encoding: 'utf8', timeout: 120000, stdio: ['ignore', 'pipe', 'pipe'] });
+      { encoding: 'utf8', timeout: 120000, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, FLEET_SHARED: FIXTURE } });
     return JSON.parse(out);
   } catch (e) {
     const out = String(e.stdout || '');
@@ -73,14 +88,30 @@ function main() {
   if (!guardBlock.test(asrc)) {
     record('A1 前置：能在 anysearch.py 里定位守卫块', false, '未匹配到 reconfigure 守卫，drill 失效');
   } else {
+    // 阳性对照（2026-10-12，F5 同族纪律）：守卫完好的副本走同一条 drill 通道必须绿。
+    // 它不绿 = 本环境已不复现 GBK 缺陷（探针失去判别力），下面的"红"就不能算证明。
+    const ctlDir = path.join(TMP, 'ctl');
+    fs.mkdirSync(ctlDir, { recursive: true });
+    const intact = path.join(ctlDir, 'anysearch.py'); // 模块名必须叫 anysearch，放独立目录避免与 guardless 撞名
+    fs.writeFileSync(intact, asrc, 'utf8');
     fs.writeFileSync(guardless, asrc.replace(guardBlock, '# [drill] UTF-8 守卫已移除\n'), 'utf8');
+    const pyAnchor = /const ANYSEARCH_PY = path\.join\(SHARED, 'skills', 'anysearch', 'scripts', 'anysearch\.py'\);/;
     const drillSuite = makeDrillSuite('fleet-eval-a1.mjs', (s) => s.replace(
-      /const ANYSEARCH_PY = path\.join\(SHARED, 'skills', 'anysearch', 'scripts', 'anysearch\.py'\);/,
+      pyAnchor,
       `const ANYSEARCH_PY = String.raw\`${guardless}\`;`,
     ));
+    const intactSuite = makeDrillSuite('fleet-eval-a1-control.mjs', (s) => s.replace(
+      pyAnchor,
+      `const ANYSEARCH_PY = String.raw\`${intact}\`;`,
+    ));
+    const rc = runSuiteJson(intactSuite, 'anysearch.encoding-verdict').results
+      .find((x) => x.id === 'anysearch.encoding-verdict');
+    const envTrusted = !!(rc && rc.ok === true);
+    record('A1 阳性对照：守卫完好副本应绿', envTrusted,
+      `ok=${rc && rc.ok} detail=${rc && rc.detail}`);
     const r = runSuiteJson(drillSuite, 'anysearch.encoding-verdict').results
       .find((x) => x.id === 'anysearch.encoding-verdict');
-    record('A1 去守卫后应翻红', r && r.ok === false,
+    record('A1 去守卫后应翻红', envTrusted && r && r.ok === false,
       `ok=${r && r.ok} metrics=${JSON.stringify(r && r.metrics)} detail=${r && r.detail}`);
   }
 

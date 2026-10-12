@@ -30,6 +30,9 @@ node <此仓库路径>merge-eval.mjs --trials 2
 
 node merge-eval.mjs --json     # 只出 JSON
 node merge-eval.mjs --quiet    # 只出汇总行
+
+# 闸门模式：无基线 = FAIL（不放行空转）
+node merge-eval/merge-eval.mjs --require-baseline --quiet
 ```
 
 读数**第一行永远回显生效参数**（`trials / remote / local / base / allow / released`）——
@@ -41,11 +44,12 @@ node merge-eval.mjs --quiet    # 只出汇总行
 |---|---|---|
 | `MERGE_REPO_SLUG` | 远端仓库 `owner/repo`（GitHub API 降级通路用）。**不配就发不出请求**，会明确报「未配置」而不是拼畸形 URL | 空 → 仅 ls-remote 可用时正常；ls-remote 失败时明确报未配置 |
 | `MERGE_REPO` | **被测仓库路径**（本套件住在仓库外，不再靠相对路径猜） | 回落到当前目录 `.`，且读数首行会显示实际用的是哪个 |
-| `MERGE_BASE_REF` | **权威基线**：`git show <SHA>:index.html`，即"合入前那一刻" | 回落到工作区旧快照，并**主动报红**（`baselineStale`）——旧快照可能是 merge-01 之前的，会把历史 legit 改动算成越界 |
+| `MERGE_BASE_REF` | **权威基线**：`git show <SHA>:index.html`，即"合入前那一刻" | 回落到工作区旧快照，并**主动报红**（`baselineStale`）——旧快照可能是 merge-01 之前的，会把历史 legit 改动算成越界；闸门调用（带 `--require-baseline`）时缺基线直接判 FAIL |
+| `GH_CLI` | gh 可执行文件路径（API 兜底通路取 token 用） | 依次试 Windows 默认安装位 → PATH 里的 `gh`；全失败时把每个候选的失败原因原样带回，**不静默降级** |
 | `MERGE_TOUCHED_IDS` | 本次**允许**变化的篇目清单（JSON 数组） | 空 → 任何变化都算越界，`untouched` 必红 |
 | `MERGE_RELEASED_BATCHES` | 授权放行的批次（闸门判据用） | 空 → 闸门判据 PASS 但 detail 写"无批次可查"（**不假装查过**） |
 
-## 六条判据
+## 七条判据
 
 | id | layer | kind | 判什么 |
 |---|---|---|---|
@@ -118,14 +122,13 @@ gate_rule: 测量失败与测量为负在决策上都等于不许过；INVALID/P
 
 ## 自检：反向验证
 
-正向全绿不能证明判据有效。**必须跑一次反向**，确认它会红：
+正向全绿不能证明判据有效。**必须跑一次反向**，确认它会红——已固化为脚本：
 
 ```bash
-# 故意用错基线 + 空允许清单 → 应当 FAIL
-MERGE_BASE_REF="<一个更早的SHA>" MERGE_TOUCHED_IDS='[]' \
-  node out/merge/merge-eval.mjs --quiet
-# 读数：FAIL: untouched.hash-zero-diff
+node merge-eval/drill-merge-eval.mjs
 ```
+
+它在 TMP 里 `git init` 一份 mini fixture（不碰任何活文件），跑四个场景：阳性对照（该绿的判据真绿）、越界改动（`only-poems-touched` 真红）、旧基线（stale 指标真红）、缺抽检报告（闸门 `missing=1` 且 BLOCK）。零网络、零 API、毫秒级，已挂进 CI。
 
 实测记录：
 - **首次真实用在他人交付上**（30 篇批量内容合入）

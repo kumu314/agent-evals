@@ -17,24 +17,38 @@
 //   node fleet-eval.mjs --json          # 只输出 JSON
 //   node fleet-eval.mjs --quiet         # 只输出汇总行
 //   node fleet-eval.mjs --only scan.sanity --only junk.absent   # 只跑指定 task（drill 用）
+//
+// 环境变量（2026-10-12 F1：去机器绑定——不写死任何人的默认路径，缺必填项直接退出）：
+//   FLEET_SHARED      必填。共享技能库根目录（含 sync.ps1 / skills/ / scripts/ 的那一级）。
+//   FLEET_PYTHON      可选。python 可执行文件路径；缺省用 PATH 里的 python。
+//   FLEET_ALLOW_FILE  可选。junk.absent 豁免白名单 JSON；缺省读本目录 fleet-eval.allow.json。
 
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+// F6：两颗迷你解析器移到 lib/parsers.mjs——套件与 selftest 共用唯一实现。
+import { stripPsComments, parseFrontmatter } from '../lib/parsers.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const OUT_DIR = path.resolve(HERE, '..', 'out');
 
-const SHARED = process.env.FLEET_SHARED || 'D:\\AgentHub\\sharedskills';
+// F1：共享库根必填。曾写死作者的 D:\ 路径——别人机器上整个套件撞在一个不存在的目录上，
+// 报表照样生成、读数全是假红。没配就明确说没配（同 merge-eval 的 MERGE_REPO_SLUG 纪律）。
+const SHARED = process.env.FLEET_SHARED;
+if (!SHARED) {
+  console.error('FLEET_SHARED 未设置：请指向共享技能库根目录（含 sync.ps1 / skills/ / scripts/ 的那一级）。');
+  process.exit(2);
+}
 const SRC = path.join(SHARED, 'skills');
 const SYNC_PS1 = path.join(SHARED, 'sync.ps1');
 const RECONCILE = path.join(SHARED, 'scripts', 'skills-reconcile.py');
 const ANYSEARCH_PY = path.join(SHARED, 'skills', 'anysearch', 'scripts', 'anysearch.py');
 const SELF = fileURLToPath(import.meta.url);
 
-const PY_CANDIDATES = ['D:\\Mysoftware\\python.exe', 'python'];
+// F1：不再写死作者机器的 python 安装位；FLEET_PYTHON 优先，其次 PATH 里的 python。
+const PY_CANDIDATES = [process.env.FLEET_PYTHON, 'python'].filter(Boolean);
 
 function pickPython() {
   for (const p of PY_CANDIDATES) {
@@ -45,10 +59,8 @@ function pickPython() {
 }
 
 // ── 读真相源：端点名单与 $hideFrom 一律现读 sync.ps1，绝不抄第二份 ──────────────
-// PowerShell 的 `#` 注释必须先在行级剥掉，否则会读进被注释掉的旧端点
-// （作者的 sync.ps1 里就留着一行被注释掉的旧端点 —— 已移出名单）。
-// 实测踩过：不剥注释会凭空多出一端 codex/skills，240 条全报 ABSENT，纯假绿/假红。
-const stripPsComments = (s) => s.split(/\r?\n/).map((l) => { const i = l.indexOf('#'); return i < 0 ? l : l.slice(0, i); }).join('\n');
+// （stripPsComments / parseFrontmatter 已移至 lib/parsers.mjs —— 2026-10-12 F6；
+//  「必须先剥 # 注释，否则凭空多出一端、240 条全报 ABSENT」的实测教训随那份文件留档。）
 
 function readSyncPs1() {
   const code = stripPsComments(fs.readFileSync(SYNC_PS1, 'utf8'));
@@ -70,31 +82,7 @@ function readSyncPs1() {
 const isHidden = (hide, target, skill) =>
   (hide.get(target) || []).some((p) => skill.startsWith(p));
 
-// ── 极简 frontmatter 解析：顶层 key: value，支持 >- / | 块标量 ──────────────────
-function parseFrontmatter(text) {
-  const lines = text.split(/\r?\n/);
-  if (lines[0]?.trim() !== '---') return null;
-  let end = -1;
-  for (let i = 1; i < lines.length; i++) {
-    if (lines[i].trim() === '---') { end = i; break; }
-  }
-  if (end < 0) return null;
-  const body = lines.slice(1, end);
-  const out = {};
-  for (let i = 0; i < body.length; i++) {
-    const m = body[i].match(/^([A-Za-z_][\w-]*)\s*:\s*(.*)$/);
-    if (!m) continue;
-    const key = m[1];
-    let val = m[2].trim();
-    if (val === '' || val === '>-' || val === '>' || val === '|' || val === '|-' || val === '>-') {
-      const buf = [];
-      while (i + 1 < body.length && /^\s+\S/.test(body[i + 1])) { buf.push(body[++i].trim()); }
-      val = buf.join(' ').trim();
-    }
-    out[key] = val.replace(/^["']|["']$/g, '');
-  }
-  return out;
-}
+// parseFrontmatter 见 lib/parsers.mjs（2026-10-12 F6，唯一实现，边界样本在 selftest.mjs）
 
 function md5(file) {
   return crypto.createHash('md5').update(fs.readFileSync(file)).digest('hex');
@@ -103,6 +91,28 @@ function md5(file) {
 function listSkillDirs(root) {
   return fs.readdirSync(root, { withFileTypes: true })
     .filter((d) => d.isDirectory()).map((d) => d.name).sort();
+}
+
+// ── junk.absent 豁免白名单（F1）：从代码内硬编码移到配置文件 ────────────────────
+// 缺文件 = 无豁免（最严，新机器本来就不该带着作者机的豁免跑）；
+// 文件坏（读不出 JSON 数组）= warn 进 detail 且不放行——fail-closed，
+// 不能让一个坏掉的 allow 文件把垃圾静默洗白。模板见 fleet-eval.allow.example.json。
+const ALLOW_FILE = process.env.FLEET_ALLOW_FILE || path.join(HERE, 'fleet-eval.allow.json');
+function readAllowList() {
+  let raw;
+  try { raw = fs.readFileSync(ALLOW_FILE, 'utf8'); } catch (e) {
+    if (e.code === 'ENOENT') return { allow: new Set(), allowWarn: '' };
+    return { allow: new Set(), allowWarn: `allow 文件读不出（${e.code || e.message}）: ${ALLOW_FILE}` };
+  }
+  try {
+    const arr = JSON.parse(raw);
+    if (!Array.isArray(arr) || arr.some((x) => typeof x !== 'string')) {
+      return { allow: new Set(), allowWarn: `allow 文件不是字符串 JSON 数组: ${ALLOW_FILE}` };
+    }
+    return { allow: new Set(arr), allowWarn: '' };
+  } catch (e) {
+    return { allow: new Set(), allowWarn: `allow 文件不是合法 JSON（${e.message}）: ${ALLOW_FILE}` };
+  }
 }
 
 // A2 自审用的网络访问黑名单：出现在任一 task 体内即判该 task 非"确定性、离线"。
@@ -183,13 +193,13 @@ const CHECKS = [
   {
     id: 'junk.absent',
     layer: 'hygiene',
-    desc: '源树内无 .git / node_modules / __pycache__ / *.bak*（sync.ps1 的排除表，扇出会带回端点；music-composition/.git 为已登记豁免，计入 metrics.allowed）',
-    run({ skillDirs }) {
+    desc: '源树内无 .git / node_modules / __pycache__ / *.bak*（sync.ps1 的排除表，扇出会带回端点；豁免走配置文件 fleet-eval.allow.json，计入 metrics.allowed）',
+    run({ skillDirs, allow, allowWarn }) {
       const excl = new Set(['.git', 'node_modules', '__pycache__']);
-      // 精确路径豁免（不按名字放过，别的技能下再出现 .git 仍算垃圾）：
-      // music-composition/.git 是刻意保留的上游克隆件 —— archive/junk-fanout-2026-10-02/MANIFEST.md
-      // 记「只从扇出里排除，不动源」，内含本机提交 9ddcb4f，禁止 push / 碰 origin。
-      const ALLOW = new Set(['music-composition/.git']);
+      // 精确路径豁免（不按名字放过，别的技能下再出现 .git 仍算垃圾）。
+      // 白名单 2026-10-12 F1 从代码硬编码移到 ALLOW_FILE——作者机上唯一合法的豁免
+      // （music-composition/.git，见 archive/junk-fanout-2026-10-02/MANIFEST.md）不是普适事实。
+      const ALLOW = allow;
       const hits = [];
       const allowed = [];
       for (const s of skillDirs) {
@@ -209,8 +219,10 @@ const CHECKS = [
       return {
         ok: hits.length === 0,
         // 命中多时不再截掉尾部（此前 slice(0,10) 会把第 11 项藏起来，读数对不上明细）
-        detail: hits.length ? hits.slice(0, 12).join(' | ') + (hits.length > 12 ? ` …共${hits.length}` : '') : 'clean',
-        metrics: { junk: hits.length, allowed: allowed.length },
+        // allowWarn 非空 = 豁免配置坏了、本轮按最严口径跑——必须显式写进读数，不许静默。
+        detail: (allowWarn ? `⚠ ${allowWarn} ——本轮豁免未生效 | ` : '')
+          + (hits.length ? hits.slice(0, 12).join(' | ') + (hits.length > 12 ? ` …共${hits.length}` : '') : 'clean'),
+        metrics: { junk: hits.length, allowed: allowed.length, allowWarn: allowWarn ? 1 : 0 },
       };
     },
   },
@@ -402,7 +414,7 @@ function parseArgs(argv) {
 
 function buildContext() {
   const { targets, hide } = readSyncPs1();
-  return { skillDirs: listSkillDirs(SRC), targets, hide };
+  return { skillDirs: listSkillDirs(SRC), targets, hide, ...readAllowList() };
 }
 
 function runOnce(ctx, checks = CHECKS) {

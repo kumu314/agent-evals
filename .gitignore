@@ -1,6 +1,9 @@
 # 套件生成的评测报告
 out/
 
+# junk.absent 豁免白名单是按机器/按库的本地配置（模板 fleet-eval/fleet-eval.allow.example.json）
+fleet-eval/fleet-eval.allow.json
+
 # 本地发布脚本
 push.cmd
 

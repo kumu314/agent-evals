@@ -17,12 +17,23 @@
 //   node merge-eval.mjs --trials 2     # 跑 2 轮，报 pass^2（幂等类红线必须这样）
 //   node merge-eval.mjs --json         # 只输出 JSON
 //   node merge-eval.mjs --quiet        # 只输出汇总行
+//   node merge-eval.mjs --require-baseline   # 闸门模式：无基线 = FAIL（默认首跑登记仍可无基线跑）
+//
+// 环境变量：
+//   MERGE_REPO             被测仓库路径
+//   MERGE_REPO_SLUG        owner/repo（远端真值 API 兜底用，经 argv 传入，不插值）
+//   GH_CLI                 gh 可执行文件路径（缺省按 Windows 默认位置 → PATH 里的 gh 依次试）
+//   MERGE_BASE_REF         本次合入前的真实 SHA
+//   MERGE_TOUCHED_IDS      本次触及篇目 JSON 数组
+//   MERGE_RELEASED_BATCHES 授权批次 JSON 数组
 
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
+// F6：extractPoems 移到 lib/parsers.mjs——与 selftest 共用唯一实现。
+import { extractPoems } from "../lib/parsers.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 // ★ 本套件**刻意住在被测仓库之外**，
@@ -78,57 +89,66 @@ async function remoteMainSha() {
 }
 
 // GitHub API 读 main 的真实 sha（token 走 gh 凭据助手，不打印）
+// ★ slug 与 gh 候选路径一律经 argv 传给内嵌脚本，**不再插值进 Python 源码**（2026-10-12 修注入面 D3）。
+// ★ gh 路径不再硬编码：GH_CLI env → Windows 默认安装位 → PATH 里的 gh，逐个试；
+//   全失败时把每个候选的失败原因原样带回 why，**不静默降级**（2026-10-12 修机器绑定 D2）。
+function ghCandidates() {
+  return [process.env.GH_CLI, "C:/Program Files/GitHub CLI/gh.exe", "gh"].filter(Boolean);
+}
 async function ghMainSha() {
   if (!REMOTE_SLUG) {
     return { ok: false, why: "未配置 MERGE_REPO_SLUG（owner/repo）—— 远端真值无从读取。请显式设置该环境变量。" };
+  }
+  if (!/^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/.test(REMOTE_SLUG)) {
+    return { ok: false, why: `MERGE_REPO_SLUG 格式不符 owner/repo："${REMOTE_SLUG}"` };
   }
   // token 由内层 python 自行向凭据助手取，**不经过 JS 也不打印**
   const env = { ...process.env, no_proxy: "*", NO_PROXY: "*", HTTPS_PROXY: "", HTTP_PROXY: "", https_proxy: "", http_proxy: "" };
   const res = await new Promise((resolve) => {
     const c = spawn(PYTHON_BIN(),
       ["-c", `
-import json,subprocess,urllib.request
-p=subprocess.run(["C:/Program Files/GitHub CLI/gh.exe","auth","git-credential","get"],
-  input="protocol=https\\nhost=github.com\\n",capture_output=True,text=True)
-tok=[l[9:].strip() for l in p.stdout.splitlines() if l.startswith("password=")][0]
-req=urllib.request.Request("https://api.github.com/repos/${REMOTE_SLUG}/git/refs/heads/main",
+import json,sys,subprocess,urllib.request,shutil
+slug=sys.argv[1]
+tried=[]
+tok=None
+for cand in sys.argv[2:]:
+    exe=shutil.which(cand)
+    if not exe:
+        tried.append(cand+" (not found)")
+        continue
+    try:
+        p=subprocess.run([exe,"auth","git-credential","get"],
+          input="protocol=https\\nhost=github.com\\n",capture_output=True,text=True,timeout=15)
+        toks=[l[9:].strip() for l in p.stdout.splitlines() if l.startswith("password=")]
+        if toks:
+            tok=toks[0]
+            break
+        tried.append(cand+" (no credential)")
+    except Exception as e:
+        tried.append(cand+" ("+type(e).__name__+")")
+if not tok:
+    sys.stderr.write("gh fallback unavailable: "+" | ".join(tried))
+    sys.exit(2)
+req=urllib.request.Request("https://api.github.com/repos/"+slug+"/git/refs/heads/main",
   headers={"Authorization":"Bearer "+tok,"Accept":"application/vnd.github+json","User-Agent":"merge-eval"})
 print(json.loads(urllib.request.urlopen(req,timeout=30).read().decode())["object"]["sha"])
-`], { env, windowsHide: true });
-    const out = [];
+`, REMOTE_SLUG, ...ghCandidates()], { env, windowsHide: true });
+    const out = [], err = [];
     c.stdout.on("data", (d) => out.push(d));
+    c.stderr.on("data", (d) => err.push(d));
     c.on("error", (e) => resolve({ ok: false, why: e.code }));
     c.on("close", (code) => resolve(code === 0
       ? { ok: /^[0-9a-f]{40}$/.test((out.join("") || "").trim()) ? true : false,
           sha: (out.join("") || "").trim(),
           why: code === 0 ? "输出不合法" : `exit ${code}` }
-      : { ok: false, why: `exit ${code}` }));
+      : { ok: false, why: `exit ${code}: ${Buffer.concat(err).toString("utf8").trim().slice(0, 160)}` }));
   });
   return res.ok ? { ok: true, sha: res.sha, via: "github-api" } : res;
 }
 
 // 见上方说明：本机同步 spawn 必 EBUSY，故取 sha 也走异步。
 
-// 取 POEMS 数组文本（bracket 匹配，非正则偷懒）
-function extractPoems(t) {
-  const m = /const POEMS\s*=\s*\[/.exec(t);
-  if (!m) return null;
-  const st = m.index + m[0].length - 1;
-  let i = st, depth = 0, inStr = false, esc = false;
-  for (; i < t.length; i++) {
-    const ch = t[i];
-    if (inStr) {
-      if (esc) esc = false;
-      else if (ch === "\\") esc = true;
-      else if (ch === '"') inStr = false;
-    } else {
-      if (ch === '"') inStr = true;
-      else if (ch === "[") depth++;
-      else if (ch === "]") { depth--; if (depth === 0) return t.slice(st, i + 1); }
-    }
-  }
-  return null;
-}
+// extractPoems 见 lib/parsers.mjs（2026-10-12 F6，唯一实现，边界样本在 selftest.mjs）
 
 const md5 = (s) => crypto.createHash("md5").update(s).digest("hex");
 
@@ -198,6 +218,9 @@ const CHECKS = [
     desc: "970 首、id 与顺序逐位不变（判**序列相等**，不是集合相等）。",
     run(ctx) {
       if (!ctx.baselinePoems) {
+        if (ctx.requireBaseline) {
+          return { ok: false, detail: "无基线可比对且置了 --require-baseline —— 闸门场景缺基线判 FAIL（首跑登记请去掉该旗标）", metrics: { note: "no-baseline-required" } };
+        }
         return { ok: true, detail: "无基线可比对（首次运行），仅记录当前读数", metrics: { note: "no-baseline" } };
       }
       if (ctx.baselineStale) {
@@ -230,6 +253,9 @@ const CHECKS = [
     desc: "未触及篇内容哈希零变化：逐篇 sha256（id+内容）比对，列出全部不一致的 id。",
     run(ctx) {
       if (!ctx.baselinePoems) {
+        if (ctx.requireBaseline) {
+          return { ok: false, detail: "无基线可比对且置了 --require-baseline —— 闸门场景缺基线判 FAIL", metrics: { note: "no-baseline-required" } };
+        }
         return { ok: true, detail: "无基线可比对，仅记录", metrics: { note: "no-baseline" } };
       }
       if (ctx.baselineStale) {
@@ -266,6 +292,9 @@ const CHECKS = [
     desc: "仅动 POEMS 数据：POEMS 数组之外的文本（CSS/JS/HTML 结构）必须逐字节相同。判 md5 全等，红了列出变化区间。",
     run(ctx) {
       if (!ctx.baselineRaw) {
+        if (ctx.requireBaseline) {
+          return { ok: false, detail: "无基线可比对且置了 --require-baseline —— 闸门场景缺基线判 FAIL", metrics: { note: "no-baseline-required" } };
+        }
         return { ok: true, detail: "无基线可比对，仅记录", metrics: { note: "no-baseline" } };
       }
       // ⚠ 基线时效闸：基线早于「本次合入的起点」时，判据会失真——
@@ -503,6 +532,9 @@ const TRIALS = Math.max(1, parseInt(
   _tEq ? _tEq.split("=")[1] : (_tSp >= 0 ? argv[_tSp + 1] : "2"), 10) || 2);
 const AS_JSON = argv.includes("--json");
 const QUIET = argv.includes("--quiet");
+// ★ 闸门加严（2026-10-12，修 D4 无基线 fail-open）：默认无基线 = 记录性放行（首跑登记需要）；
+//   被当闸门调用时必须带 --require-baseline，无基线 = FAIL，防止空转放行。
+const REQUIRE_BASELINE = argv.includes("--require-baseline");
 
 async function buildCtx() {
   const currentRaw = fs.existsSync(INDEX) ? fs.readFileSync(INDEX, "utf8") : null;
@@ -535,6 +567,7 @@ async function buildCtx() {
 
   return {
     currentRaw, curPoems, baselineRaw, baselinePoems, baselineStale, baselineFrom,
+    requireBaseline: REQUIRE_BASELINE,
     // 本次触及的篇目（用于 untouched 判据的允许清单）——由外部注入
     touchedIds: new Set(JSON.parse(process.env.MERGE_TOUCHED_IDS || "[]")),
     // 授权放行的批次（闸门判据用）——由外部注入
@@ -564,6 +597,7 @@ const report = {
     remote_ref: REMOTE_REF,
     local_ref: LOCAL_REF,
     base_ref: process.env.MERGE_BASE_REF || "<未指定→用旧快照>",
+    require_baseline: REQUIRE_BASELINE,
     allow_ids: ctx.touchedIds.size,
     released_batches: ctx.releasedBatches,
   },
@@ -597,7 +631,7 @@ if (AS_JSON) {
   console.log("=== merge-eval 读数 ===");
   const e = report.effective;
   // 生效参数**先打第一行**：任何"我以为的配置 ≠ 实际配置"都在这里现形
-  console.log(`trials=${e.trials} | remote=${e.remote_ref} | local=${e.local_ref} | base=${e.base_ref} | allow=${e.allow_ids} | released=[${e.released_batches.join(",")}]`);
+  console.log(`trials=${e.trials} | remote=${e.remote_ref} | local=${e.local_ref} | base=${e.base_ref} | require_baseline=${e.require_baseline} | allow=${e.allow_ids} | released=[${e.released_batches.join(",")}]`);
   const pk = report.pass_power_k === null ? "N/A(全轮无效)" : report.pass_power_k;
   console.log(`pass_rate=${report.pass_rate}  pass^${TRIALS}=${pk}  valid=${report.valid_rounds} invalid=${report.invalid_rounds}`);
   console.log(`baseline=${report.baseline_from || "-"}  present=${report.baseline_present}${report.baseline_stale ? "  ⚠STALE" : ""}`);

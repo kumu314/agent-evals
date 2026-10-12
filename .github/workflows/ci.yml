@@ -23,3 +23,7 @@ jobs:
         run: node t2/smoke-ab.mjs --dry
       - name: demo 自检（样例技能库 → 先红后绿）
         run: node demo/run.mjs --assert
+      - name: 解析器自检（F6，node:test，零依赖）
+        run: node --test selftest.mjs
+      - name: merge-eval 负例 drill（F5，临时 fixture 仓库，零 API 零网络）
+        run: node merge-eval/drill-merge-eval.mjs

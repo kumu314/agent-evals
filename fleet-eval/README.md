@@ -1,6 +1,6 @@
 # agent-evals — 本机 Evals 落地方案
 
-> **移植提示**：本套件默认读 `<SHARED>`（作者本机布局），用环境变量 `FLEET_SHARED` 覆盖成你自己的技能库根目录。
+> **移植提示**：`FLEET_SHARED` **必填**，指向你自己的技能库根目录——没有默认值（2026-10-12 起作者本机路径已从代码里删除；不配则打印一行提示并退出码 `2`，不静默读别处）。
 > 它假定该目录下有 `skills/`、`sync.ps1`、`scripts/skills-reconcile.py`——即一套"共享技能库 + 多端扇出"的布局。
 > 若你的目录结构不同，`endpoints.*` 与 `reconcile.*` 这几条会红，属预期（它们本来就绑定那套布局）。
 
@@ -27,6 +27,15 @@ node fleet-eval.mjs --trials 3      # 3 轮，额外报 pass^3
 node fleet-eval.mjs --json          # 只出 JSON
 ```
 
+### 环境变量
+
+| 变量 | 作用 | 不给会怎样 |
+|---|---|---|
+| `FLEET_SHARED` | **必填**。共享技能库根目录（含 `sync.ps1` / `skills/` / `scripts/` 的那一级） | 打印一行提示，退出码 `2` |
+| `FLEET_PYTHON` | python 可执行文件路径（`reconcile.*` 用） | 回落 PATH 里的 `python` |
+| `FLEET_ALLOW_FILE` | `junk.absent` 豁免白名单 JSON 路径 | 读本目录 `fleet-eval.allow.json`；没有 = 不豁免任何项 |
+| `FLEET_ANYSEARCH` | `drill-a1a2.mjs` 里 anysearch.py 的路径 | 从 `FLEET_SHARED` 推导；两者皆无退出码 `2` |
+
 - 退出码 `0` = 全绿；`1` = 有条目失败（每个失败项在 JSON 里带 `detail`）。
 - 报告落盘 `out/fleet-eval-YYYY-MM-DD.json`。
 
@@ -38,7 +47,7 @@ node fleet-eval.mjs --json          # 只出 JSON
 | `frontmatter.valid` | structure | 每份 SKILL.md 都能解析出非空 `name` / `description` |
 | `frontmatter.name-matches-dir` | structure | `name` == 目录名 |
 | `frontmatter.name-unique` | routing | `name` 在源树内唯一 |
-| `junk.absent` | hygiene | 无 `.git`/`node_modules`/`__pycache__`/`*.bak*`（`music-composition/.git` 为已登记豁免，计入 `metrics.allowed`） |
+| `junk.absent` | hygiene | 无 `.git`/`node_modules`/`__pycache__`/`*.bak*`；豁免按**精确路径**走配置文件 `fleet-eval.allow.json`（模板 `fleet-eval.allow.example.json`，`FLEET_ALLOW_FILE` 可覆盖路径）：没有这份文件 = 不豁免任何项；文件坏/不是字符串数组 = warn 写进 detail 且不放行（fail-closed，防把垃圾静默洗白） |
 | `endpoints.present` | fanout | 声明的端点目录都存在 |
 | `endpoints.match-authority` | fanout | 本套件现读 `sync.ps1` 的端点名单 == `skills-reconcile.py --targets` 的输出 |
 | `endpoints.skillmd-parity` | fanout | 每端每颗技能 SKILL.md 的 md5 == 源（尊重 `$hideFrom`） |

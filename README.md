@@ -95,13 +95,18 @@ control pass = 0%    treated pass = 100%    lift = 100 个百分点
 ```
 agent-evals/
 ├── demo/              一键 demo：自带样例技能库，先红后绿（零配置）
+├── docs/              eval-primitives.md —— 三套件实证提炼的五条评测原语
 ├── fleet-eval/        技能库回归（11 项断言，零 API 成本）
 │   ├── fleet-eval.mjs
 │   ├── drill-a1a2.mjs     反向验证脚本：证明新增断言真的会红
+│   ├── fleet-eval.allow.example.json  junk.absent 豁免白名单模板（真的那份不入库）
 │   └── research/          方法论来源
+├── lib/               parsers.mjs —— 三套件共用的三颗解析器（唯一实现）
 ├── merge-eval/        批量内容合入回归（7 项断言）
 │   ├── merge-eval.mjs
+│   ├── drill-merge-eval.mjs  反向验证 drill：TMP git fixture，零网络
 │   └── README.md
+├── selftest.mjs       lib/parsers.mjs 的单元测试（node:test，零依赖）
 └── t2/                技能增益 A/B（需要 API key）
     ├── smoke-ab.mjs
     └── skills/        三颗被测技能（自研，MIT）

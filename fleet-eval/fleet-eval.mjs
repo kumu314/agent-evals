@@ -22,6 +22,10 @@
 //   FLEET_SHARED      必填。共享技能库根目录（含 sync.ps1 / skills/ / scripts/ 的那一级）。
 //   FLEET_PYTHON      可选。python 可执行文件路径；缺省用 PATH 里的 python。
 //   FLEET_ALLOW_FILE  可选。junk.absent 豁免白名单 JSON；缺省读本目录 fleet-eval.allow.json。
+//   FLEET_SCOPE       可选，默认 full。full=跑全部 11 项（老口径，一字不变）；
+//                     core=只跑与"共享库+扇出端点"布局无关的 6 项，跳过 fanout/tooling 那 5 项
+//                     （你的技能库没有 sync.ps1 / 多端扇出 / anysearch 时用）。
+//                     必须显式声明——不是"检测到缺就自动跳"，那会把"你其实配错了路径"也一起藏掉。
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -123,6 +127,20 @@ const FORBIDDEN_NET = ['fetch(', 'XMLHttpRequest', 'axios',
   "from 'node:http", 'from "node:http', "from 'node:https", 'from "node:https',
   'http.get(', 'https.get('];
 const NET_URL_RE = /https?:\/\//;
+
+// 作用域开关（FLEET_SCOPE）：fanout/tooling 两层的 5 项断言绑死"共享库 + sync.ps1 多端扇出 + anysearch"
+// 这套本机布局。别人的技能库没有这套结构时，可显式 FLEET_SCOPE=core 只跑布局无关的 6 项。
+// 默认 full 一字不改，保持 fail-closed——不配、配错、缺 sync.ps1 都照常红，绝不自动降级把配错误藏起来。
+const CORE_EXCLUDE_LAYERS = new Set(['fanout', 'tooling']);
+function resolveScope() {
+  const raw = process.env.FLEET_SCOPE;
+  const s = (raw || 'full').trim().toLowerCase();
+  if (s !== 'full' && s !== 'core') {
+    console.error(`FLEET_SCOPE 只认 full 或 core，收到 "${raw}"（非法值直接退 2，不静默当作默认）。`);
+    process.exit(2);
+  }
+  return s;
+}
 
 // ── task 定义：每项返回 { id, layer, desc, ok, detail, metrics } ───────────────
 const CHECKS = [
@@ -412,9 +430,14 @@ function parseArgs(argv) {
   return a;
 }
 
-function buildContext() {
-  const { targets, hide } = readSyncPs1();
-  return { skillDirs: listSkillDirs(SRC), targets, hide, ...readAllowList() };
+function buildContext(needFanout) {
+  const base = { skillDirs: listSkillDirs(SRC), ...readAllowList() };
+  // scope=core 时不读 sync.ps1——外部技能库根本没有这个文件，读了会抛异常把整个套件掀翻。
+  if (needFanout) {
+    const { targets, hide } = readSyncPs1();
+    return { ...base, targets, hide };
+  }
+  return { ...base, targets: [], hide: new Map() };
 }
 
 function runOnce(ctx, checks = CHECKS) {
@@ -430,10 +453,19 @@ function runOnce(ctx, checks = CHECKS) {
 
 function main() {
   const args = parseArgs(process.argv.slice(2));
-  const ctx = buildContext();
+  const scope = resolveScope();
   const unknown = args.only.filter((id) => !CHECKS.some((c) => c.id === id));
   if (unknown.length) { console.error(`unknown --only id: ${unknown.join(', ')}`); process.exit(2); }
-  const selected = args.only.length ? CHECKS.filter((c) => args.only.includes(c.id)) : CHECKS;
+  let selected = args.only.length ? CHECKS.filter((c) => args.only.includes(c.id)) : CHECKS;
+  // scope=core：显式摘掉布局相关的 5 项，其余照跑。跳过项记进 scopeDropped 回显，不静默。
+  let scopeDropped = [];
+  if (scope === 'core') {
+    scopeDropped = selected.filter((c) => CORE_EXCLUDE_LAYERS.has(c.layer)).map((c) => c.id);
+    selected = selected.filter((c) => !CORE_EXCLUDE_LAYERS.has(c.layer));
+    if (!selected.length) { console.error('FLEET_SCOPE=core 与 --only 交集为空：core 口径下无可执行断言'); process.exit(2); }
+  }
+  const needFanout = selected.some((c) => CORE_EXCLUDE_LAYERS.has(c.layer));
+  const ctx = buildContext(needFanout);
   const trials = [];
   for (let k = 0; k < args.trials; k++) trials.push(runOnce(ctx, selected));
 
@@ -446,6 +478,8 @@ function main() {
     suite: 'fleet-eval',
     generated_at: new Date().toISOString(),
     source: SRC,
+    scope,
+    skipped_by_scope: scopeDropped,
     endpoints: ctx.targets,
     trials: args.trials,
     skills_scanned: ctx.skillDirs.length,
@@ -458,8 +492,11 @@ function main() {
     console.log(JSON.stringify(report, null, 2));
   } else {
     if (!args.quiet) {
-      console.log('fleet-eval — 本机 agent 资产舰队回归套件 (source: %s, %d skills, %d endpoints)',
-        SRC, ctx.skillDirs.length, ctx.targets.length);
+      console.log('fleet-eval — 本机 agent 资产舰队回归套件 (source: %s, %d skills, %d endpoints, scope=%s)',
+        SRC, ctx.skillDirs.length, ctx.targets.length, scope);
+      if (scope === 'core') {
+        console.log(`  [scope=core] 跳过 ${scopeDropped.length} 项 fanout/tooling 断言（与"共享库+sync.ps1 扇出端点"布局无关）：${scopeDropped.join(', ') || '无'}`);
+      }
       console.log('-'.repeat(78));
       for (const r of first) {
         console.log(`[${r.ok ? 'PASS' : 'FAIL'}] ${r.id.padEnd(30)} ${JSON.stringify(r.metrics)} (${r.ms}ms)`);
@@ -467,7 +504,8 @@ function main() {
       }
       console.log('-'.repeat(78));
     }
-    console.log(`pass_rate = ${(passRate * 100).toFixed(1)}%  (${first.filter((r) => r.ok).length}/${first.length})` +
+    console.log(`pass_rate = ${(passRate * 100).toFixed(1)}%  (${first.filter((r) => r.ok).length}/${first.length} 项已执行` +
+      (scope === 'core' ? `，${scopeDropped.length} 项按 scope 跳过不计` : '') + ')' +
       (args.trials > 1 ? `  |  pass^${args.trials} = ${(passHatK * 100).toFixed(1)}%` : ''));
   }
 

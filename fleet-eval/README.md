@@ -2,7 +2,8 @@
 
 > **移植提示**：`FLEET_SHARED` **必填**，指向你自己的技能库根目录——没有默认值（2026-10-12 起作者本机路径已从代码里删除；不配则打印一行提示并退出码 `2`，不静默读别处）。
 > 它假定该目录下有 `skills/`、`sync.ps1`、`scripts/skills-reconcile.py`——即一套"共享技能库 + 多端扇出"的布局。
-> 若你的目录结构不同，`endpoints.*` 与 `reconcile.*` 这几条会红，属预期（它们本来就绑定那套布局）。
+> 若你的目录结构不同，`endpoints.*` / `reconcile.*`（fanout 层）与 `anysearch.encoding-verdict`（tooling 层）这 5 条会红——它们本来就绑定那套布局。
+> 想只跑与布局无关的 6 条（frontmatter / junk / suite 那几项），显式设 `FLEET_SCOPE=core`：套件会跳过那 5 条并**回显跳过了哪些**，其余照常跑。**默认 `full`（跑全部 11 条）一字不变**——不设这个开关、或 `sync.ps1` 缺失，都会照常报错，不会自动降级（那会把"你其实配错了路径"一起藏掉）。
 
 检索日 2026-10-06。方法论依据见 `research/`，项目面清单见 `research/project-landscape-2026-10-06.md`。
 
@@ -34,6 +35,7 @@ node fleet-eval.mjs --json          # 只出 JSON
 | `FLEET_SHARED` | **必填**。共享技能库根目录（含 `sync.ps1` / `skills/` / `scripts/` 的那一级） | 打印一行提示，退出码 `2` |
 | `FLEET_PYTHON` | python 可执行文件路径（`reconcile.*` 用） | 回落 PATH 里的 `python` |
 | `FLEET_ALLOW_FILE` | `junk.absent` 豁免白名单 JSON 路径 | 读本目录 `fleet-eval.allow.json`；没有 = 不豁免任何项 |
+| `FLEET_SCOPE` | 作用域：`full`（默认，跑全部 11 项）/ `core`（只跑与"共享库 + 扇出端点"布局无关的 6 项，显式跳过 fanout + tooling 那 5 项并回显跳过了哪些） | 缺省 `full`；非法值退出码 `2`（不静默当默认）。外部技能库缺 `sync.ps1` 时**用它显式声明，而不是让套件自动降级** |
 | `FLEET_ANYSEARCH` | `drill-a1a2.mjs` 里 anysearch.py 的路径 | 从 `FLEET_SHARED` 推导；两者皆无退出码 `2` |
 
 - 退出码 `0` = 全绿；`1` = 有条目失败（每个失败项在 JSON 里带 `detail`）。

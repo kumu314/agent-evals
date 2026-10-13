@@ -129,6 +129,37 @@ function main() {
       `ok=${r && r.ok} netViolations=${r && r.metrics.netViolations} detail=${r && r.detail}`);
   }
 
+  // ── S1：FLEET_SCOPE=core 显式跳过 fanout/tooling，且缺 sync.ps1 不崩 ──────────
+  // 用「无 sync.ps1」的样例库（外部技能库的常见形态）喂真实套件代码，证两件事：
+  //   正对照 core：那 5 项被摘掉、只跑 6 项、且不再因缺 sync.ps1 崩；
+  //   负对照 full：同一份无 sync.ps1 库走默认口径必须如实报错（不自动降级把配错藏起来）。
+  const FANOUT_IDS = ['endpoints.present', 'endpoints.match-authority', 'endpoints.skillmd-parity', 'reconcile.drift-zero', 'anysearch.encoding-verdict'];
+  const nosync = path.join(TMP, 'lib-nosync');
+  fs.cpSync(path.join(HERE, '..', 'demo', 'fixture-clean', 'skills'), path.join(nosync, 'skills'), { recursive: true });
+  const scopeSuite = makeDrillSuite('fleet-eval-scope.mjs'); // 逻辑原样复制，只把 OUT_DIR 导进临时区
+  function runScope(envExtra) {
+    try {
+      const out = execFileSync(NODE, [scopeSuite, '--json'],
+        { encoding: 'utf8', timeout: 120000, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, FLEET_SHARED: nosync, ...envExtra } });
+      return { code: 0, report: JSON.parse(out) };
+    } catch (e) {
+      const so = String(e.stdout || '');
+      if (so.trim().startsWith('{')) return { code: e.status == null ? 1 : e.status, report: JSON.parse(so) };
+      return { code: e.status == null ? 1 : e.status, threw: true };
+    }
+  }
+  const coreRun = runScope({ FLEET_SCOPE: 'core' });
+  const cr = coreRun.report;
+  const skipOk = !!(cr && cr.scope === 'core'
+    && FANOUT_IDS.every((id) => (cr.skipped_by_scope || []).includes(id))
+    && cr.results.length === 6
+    && cr.results.every((r) => !FANOUT_IDS.includes(r.id)));
+  record('S1 正对照：scope=core 跳过 5 项 fanout/tooling 且无 sync.ps1 不崩', skipOk && coreRun.code === 0,
+    `scope=${cr && cr.scope} skipped=${cr && (cr.skipped_by_scope || []).length} ran=${cr && cr.results.length} exit=${coreRun.code}`);
+  const fullRun = runScope({});
+  record('S1 负对照：无 sync.ps1 走默认 full 应如实报错（不自动降级）', fullRun.threw === true,
+    `threw=${fullRun.threw === true} exit=${fullRun.code}`);
+
   // ── 活文件零改动自证 ───────────────────────────────────────────────────────
   const after = { suite: md5(SUITE), anysearch: md5(ANYSEARCH) };
   record('活文件零改动', before.suite === after.suite && before.anysearch === after.anysearch,

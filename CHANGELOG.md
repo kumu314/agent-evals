@@ -18,7 +18,7 @@
 
 ### 变更
 - fleet-eval 机器绑定解耦：`FLEET_SHARED` 改必填（缺失打印提示并以退出码 `2` 退出，不再有作者本机默认值）；python / anysearch 路径参数化（`FLEET_PYTHON` / `FLEET_ANYSEARCH`）；豁免白名单从代码硬编码移到 `fleet-eval.allow.json`（缺文件 = 无豁免，文件坏 = warn 不放行，fail-closed）。
-- fleet-eval 新增 `FLEET_SCOPE` 作用域开关：默认 `full` 跑全部 11 项（老口径一字不变）；`core` 只跑与"共享库 + `sync.ps1` 多端扇出"布局无关的 6 项，显式跳过 fanout / tooling 那 5 项并回跳过了哪些（外部技能库缺 `sync.ps1` / 多端扇出 / anysearch 时用）。非法值退出码 `2`；跳过是显式声明，不是"缺就自动跳"，配错路径仍照常报错。
+- fleet-eval 新增 `FLEET_SCOPE` 作用域开关：默认 `full` 跑全部 11 项（老口径一字不变）；`core` 只跑与"共享库 + `sync.ps1` 多端扇出"布局无关的 6 项，显式跳过 fanout / tooling 那 5 项并回显跳过了哪些（外部技能库缺 `sync.ps1` / 多端扇出 / anysearch 时用）。非法值退出码 `2`；跳过是显式声明，不是"缺就自动跳"，配错路径仍照常报错。
 - merge-eval 加 `--require-baseline`：闸门模式无基线 = FAIL，默认仍为记录性放行（首跑登记不受影响）；生效参数回显新增 `require_baseline`。
 - merge-eval 的 gh 路径参数化（`GH_CLI` → 默认安装位 → PATH，全失败逐候选带原因，不静默降级）；远端仓库 slug 改经 argv 传入并先做形态预检，不再拼进内嵌脚本源码。
 

@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+暂无。
+
+## [0.2.0] - 2026-10-13
+
 治理方案 F1-F6 落地（2026-10-12），另补齐 CONTRIBUTING.md / SECURITY.md / issue 模板 / CHANGELOG 治理文件。
 
 ### 新增
@@ -27,10 +31,11 @@
 - **merge-eval**：批量内容合入回归，7 项断言，核心是"未触及条目逐字节不变"；三态闸门 `gate_verdict`（测量失败=测量为负=一律 BLOCK）。
 - **t2/smoke-ab**：技能增益 A/B，带技能 vs 不带技能比 `pass^k`；负对照臂证明判据有判别力。
 - **demo**：自带样例技能库的一键 demo（先红后绿，零配置零 API）。
-- CI：语法检查 + 两个零 API 自检（刻意不跑依赖本机磁盘的 fleet-eval）。（Unreleased 轮又补了解析器单测与 merge-eval 负例 drill 两步。）
+- CI：语法检查 + 两个零 API 自检（刻意不跑依赖本机磁盘的 fleet-eval）。（0.2.0 轮又补了解析器单测与 merge-eval 负例 drill 两步。）
 
 ### 设计口径
 - 能确定性判定就不请 LLM 当裁判；证据只认外部可复读物证（sha256/远端读数/退出码）；面向稳定资产判 `pass^k`；看到红先怀疑判据。
 
-[Unreleased]: https://github.com/kumu314/agent-evals/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/kumu314/agent-evals/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/kumu314/agent-evals/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/kumu314/agent-evals/tree/v0.1.0

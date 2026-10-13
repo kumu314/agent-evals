@@ -27,3 +27,7 @@ jobs:
         run: node --test selftest.mjs
       - name: merge-eval 负例 drill（F5，临时 fixture 仓库，零 API 零网络）
         run: node merge-eval/drill-merge-eval.mjs
+      - name: fleet-eval core 作用域自检（样例库 → 摘掉 fanout 5 项，零网络）
+        run: |
+          set -e
+          FLEET_SHARED=demo/fixture-clean FLEET_SCOPE=core node fleet-eval/fleet-eval.mjs --trials 1

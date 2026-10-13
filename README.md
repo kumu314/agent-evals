@@ -25,9 +25,12 @@
 
 ## 快速开始
 
-需要 Node ≥ 20.11（用了 `import.meta.dirname` 与内置 `fetch`）。
+需要 Node ≥ 20.11（用了 `import.meta.dirname` 与内置 `fetch`）。运行时门槛已写进 `package.json` 的 `engines`。
 
 ```bash
+# 一键跑完全部零 API/零网络自检（等价于 CI，跨平台；env 在进程内设，不用 shell 前缀）
+npm test          # = node run-checks.mjs，逐步打印 rc 台账，任一失败即非零退出
+
 # 0) 一键看效果：拿仓库自带的样例技能库跑，先红后绿（零配置、零 API）
 node demo/run.mjs
 

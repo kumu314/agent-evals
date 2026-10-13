@@ -1,0 +1,24 @@
+{
+  "name": "agent-evals",
+  "version": "0.2.0",
+  "description": "把「AI agent 干活靠不靠谱」写成可机械判定的确定性断言：改动后跑一遍，掉了就报红。三套件 fleet-eval / merge-eval / t2，大部分自检零依赖、零 API 成本、零网络即可跑。",
+  "license": "MIT",
+  "author": "kumu314",
+  "type": "module",
+  "engines": {
+    "node": ">=20.11.0"
+  },
+  "scripts": {
+    "test": "node run-checks.mjs"
+  },
+  "keywords": [
+    "agent",
+    "evaluation",
+    "eval",
+    "testing",
+    "deterministic",
+    "regression",
+    "cli"
+  ],
+  "private": false
+}

@@ -11,8 +11,8 @@
 这是评测脚本，不是对外服务：不监听端口、不存用户数据、不长期持凭据。真正的风险面集中在三处：
 
 1. **凭据外泄**：`t2/smoke-ab.mjs` 需要 API key（走 env）。代码纪律是 **key 不进任何打印/落盘产物**——若你发现哪条路径把它打进了 stdout / JSON 报告 / git，这是高危，请 private 报。
-2. **命令注入**：脚本会把 env 值拼进 `execFileSync` 参数，`merge-eval` 还会把 `MERGE_REPO_SLUG` 直接插值进内嵌 Python 源码字符串。正常自用场景这些值由你自己设，注入不可达；但如果你把仓库接进 CI 且用**不可信输入**填这些 env（`MERGE_REPO_SLUG`、`FLEET_SHARED` 等），注入面就真实存在。**这是一个已知、尚未修复的项**（修法见 slug 走 argv 传参），若你要在不可信输入下用 merge-eval，请先 private 联系确认修复状态。
-3. **CI 工作流**：`.github/workflows/ci.yml` 只跑语法检查 + 两个零 API 自检，不下载第三方 action、不接 pull_request_target。若增硬 CI（见优化方案 M3），引入外部触发器时的权限最小化算安全相关改动。
+2. **命令注入（已于 2026-10-12 D3 修复）**：早期版本会把 `MERGE_REPO_SLUG` 插值进内嵌 Python 源码；现已改为**经 argv 传参**（Python 内 `sys.argv[1]` 读取），并在 spawn 前按 `owner/repo` 格式白名单校验（`^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$`，不符直接拒绝）。两套件的子进程调用一律走**参数数组**（`execFileSync`/`spawn`，不经 shell），env 值里的 shell 元字符不会被执行。**残留边界**：`MERGE_BASE_REF` 等仍作为位置参数传给 `git show <ref>:index.html`，本套件定位为自用/可信环境，不接受不可信 env 输入——若要在不可信输入下部署，请先 private 联系。
+3. **CI 工作流**：`.github/workflows/ci.yml` 只跑零 API、零网络的确定性自检（语法检查 + t2 `--dry` + demo + selftest + merge-eval drill + fleet-eval core 作用域），不下载第三方 action、不接 `pull_request_target`、不授予写权限。若增硬 CI 引入外部触发器，权限最小化算安全相关改动。
 
 ## 范围与响应
 

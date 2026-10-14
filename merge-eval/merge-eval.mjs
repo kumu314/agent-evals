@@ -377,7 +377,7 @@ const CHECKS = [
         if (!/\bPASS\b/.test(t)) { noPass.push(`${b}(${hit})`); continue; }
         // ★ 记不可变指向 `<path>@<blob-sha>`：报告文件是**可变对象**，
         //   今天推上去的这份，明天 main 可以被覆盖。闸门要记「当时通过的那一份」。
-        // ★ 三种状态不可并成一个中性标签（trae 指出）：
+        // ★ 三种状态不可并成一个中性标签（评审指出）：
         //   missing / untracked / path@blobsha。
         //   「未入库」不是可接受的中间状态 —— 取不到不可变指向就等于物证不可复读。
         const sha = await fileBlobSha(`out/${hit}`);
@@ -396,7 +396,7 @@ const CHECKS = [
           declared: batches.length, pass: found.length,
           missing: missing.length, noPass: noPass.length,
           untracked: untracked.length, badFace: badFace.length,
-          // ★ 决策语义（trae ①）：用于决策闸时，**测量失败与测量为负在决策上都等于「不许过」**。
+          // ★ 决策语义（评审 ①）：用于决策闸时，**测量失败与测量为负在决策上都等于「不许过」**。
           //   这里把三态显式写成机器可读字段，让调用方不可能把 INVALID 读成「没有反对意见」。
           gateVerdict: bad === 0 ? "PASS" : "BLOCK",
           gateNote: bad === 0
@@ -610,7 +610,7 @@ const report = {
   results: trials[0],
 };
 
-// ★ 决策语义在所有输出模式下都必须存在（trae ①）：
+// ★ 决策语义在所有输出模式下都必须存在（评审 ①）：
 //   「测量失败」与「测量为负」在读数上可分开，**在决策上都等于不许过**。
 //   机器可读字段 gate_verdict 只认 ALL PASS → PASS，其余一律 BLOCK。
 {
@@ -655,7 +655,7 @@ if (AS_JSON) {
   }
   console.log(`结论: ${concl}`);
 
-  //★★ 决策语义（trae ①，必须存在且不可误读）——
+  //★★ 决策语义（评审 ①，必须存在且不可误读）——
   //   **测量失败与测量为负，在读数上可以分开；在决策上都等于「不许过」。**
   //   若把 INVALID/PARTIAL 读成「没有反对意见 / 信息不足随你」，
   //   那就是「缺项当通过」在自家套件里复发 —— 所以这里把它写成机器可读字段。

@@ -215,8 +215,8 @@ const CHECKS = [
     run({ skillDirs, allow, allowWarn }) {
       const excl = new Set(['.git', 'node_modules', '__pycache__']);
       // 精确路径豁免（不按名字放过，别的技能下再出现 .git 仍算垃圾）。
-      // 白名单 2026-10-12 F1 从代码硬编码移到 ALLOW_FILE——作者机上唯一合法的豁免
-      // （music-composition/.git，见 archive/junk-fanout-2026-10-02/MANIFEST.md）不是普适事实。
+      // 白名单 2026-10-12 F1 从代码硬编码移到 ALLOW_FILE——原部署机器上唯一合法的豁免
+      // （某个刻意保留的上游克隆件的 `.git`）不是普适事实。
       const ALLOW = allow;
       const hits = [];
       const allowed = [];

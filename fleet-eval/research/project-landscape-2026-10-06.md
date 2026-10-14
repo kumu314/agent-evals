@@ -41,7 +41,7 @@
 | `wandb/weave` | 1136 | Py | 2026-10-05 | W&B 的 eval/trace 工具包 |
 | `harbor-framework/terminal-bench` | 848 | Py | 2026-10-05 | Terminal-Bench 新版（2026-01-25 建） |
 
-**需警惕**（星数与年龄严重不匹配，判为疑似刷星/营销，不纳入方案）：`ifixai-ai/iFixAi` 21221 stars / 2026-04-27 创建；`Q00/ouroboros` 6183 stars / 2026-01-14 创建（topics 含 `dsh`、`dsh-plugin`，与本机 DSH 相关，但定位是"自我进化 Agent OS"，不是评测框架，不纳入选型）。
+**需警惕**（星数与年龄严重不匹配，判为疑似刷星/营销，不纳入方案）：`ifixai-ai/iFixAi` 21221 stars / 2026-04-27 创建；`Q00/ouroboros` 6183 stars / 2026-01-14 创建（topics 含 `dsh`、`dsh-plugin`，与某个本地 Agent 框架相关，但定位是"自我进化 Agent OS"，不是评测框架，不纳入选型）。
 
 ## A.2 中文侧
 
@@ -67,7 +67,7 @@
 
 ## A.4 与本机既有资产的重合点
 
-- **promptfoo 已装**（本机 eval-skills 目录，v0.123.1）+ 已有 A/B 对照 config（control vs treated，`openai:codex-sdk` provider + regex assertion）。
-- `codex` CLI 现读在 `%APPDATA%\npm\codex.ps1` → codex-sdk provider 可用。
-- **无 GPU** → `lm-evaluation-harness` / `oumi` / `lighteval`(本地权重) 直接排除；本机只走 **API 型评测**（key 已有 5 把：OPENAI/DEEPSEEK/DASHSCOPE/OPENROUTER/ANYSEARCH）。
+- **promptfoo 已装**（已装，v0.123.1）+ 已有 A/B 对照 config（control vs treated，`openai:codex-sdk` provider + regex assertion）。
+- `codex` CLI 已在 PATH → codex-sdk provider 可用。
+- **无 GPU** → `lm-evaluation-harness` / `oumi` / `lighteval`(本地权重) 直接排除；本机只走 **API 型评测**（需自备各家 API key）。
 - 腾讯 **AI-Infra-Guard**（Skills Scan / MCP Scan）与本机"100+ 共享技能 + MCP"形态对口，作为可选补强候选。

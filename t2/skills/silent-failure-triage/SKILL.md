@@ -109,7 +109,7 @@ agent_created: true
   2. 别按英文标签 grep：中文 Windows 上 `schtasks /fo LIST /v | Select-String "TaskName|Status|Next Run|Last Result"` 实测返回 **0 行**（标签已本地化成"上次结果/下次运行时间"），而退出码仍是 0——于是被误读成"任务不存在"。验证一律走 `/xml`（标签恒英文）或 `Get-ScheduledTask*` 属性。
 
 - **验证于**：Windows 11 家庭中文版 10.0.26200 · Windows PowerShell 5.1.26100.9444 / cmd（schtasks） · 2026-09-17
-  （实测 `skills-auto-update`：`LastRunTime=2026/9/14 13:26:44`、`LastTaskResult=2147946720`（`0x800710E0`）、`NextRunTime=2026/9/21 9:00:00`、`State=Ready`；`DisallowStartIfOnBatteries=True`、`StopIfGoingOnBatteries=True`、`LogonType=Interactive`（XML 里为 `InteractiveToken`）；`schtasks /query /tn <任务> /xml | findstr` 英文标签命中、退出码 0，而 `/fo LIST /v`（中文本地化标签）对英文标签返回 0 行。**边界：本轮只读，未新建/修改/删除任何计划任务。**）
+  （实测某定时更新技能：`LastRunTime=2026/9/14 13:26:44`、`LastTaskResult=2147946720`（`0x800710E0`）、`NextRunTime=2026/9/21 9:00:00`、`State=Ready`；`DisallowStartIfOnBatteries=True`、`StopIfGoingOnBatteries=True`、`LogonType=Interactive`（XML 里为 `InteractiveToken`）；`schtasks /query /tn <任务> /xml | findstr` 英文标签命中、退出码 0，而 `/fo LIST /v`（中文本地化标签）对英文标签返回 0 行。**边界：本轮只读，未新建/修改/删除任何计划任务。**）
 
 ## 9. `curl` 打回了 HTTP 码，文件却没落盘
 
@@ -211,7 +211,7 @@ agent_created: true
 
 ## 14b. 本节这套两口径计数，落地场景是"密钥进 git 历史后的清除"
 
-上面 §14 的所有读数都出自一次真实的**历史清除任务**——清除动作本身（扫描面清单、先副本后原件、`refs/original/*` 别混进 `--all` 分母、远端可达性不可证、轮换与清除的先后）已成独立一颗：`git-history-secret-erase`。要"报命中 N 处之前先固定口径"读这里；要真的动手清历史，去那颗按 SOP 走。
+上面 §14 的所有读数都出自一次真实的**历史清除任务**——清除动作本身（扫描面清单、先副本后原件、`refs/original/*` 别混进 `--all` 分母、远端可达性不可证、轮换与清除的先后）已成一套独立的历史密钥清除流程（SOP）。要"报命中 N 处之前先固定口径"读这里；要真的动手清历史，另按那套 SOP 走。
 
 ## 15. 守卫/检查本身从没生效过：条件恒假与恒真
 
@@ -258,7 +258,7 @@ netstat -ano | findstr /r /c:"LISTENING.*:<端口>"      →  命中 0 行
 ### (b) 条件恒真 —— 哨兵值把不同原因压成一个
 
 `catch` 里返回与其他分支同形的哨兵值，会让"正常但形态不同"也落进异常分支。
-实测形态（详见 `hot-patching-live-artifacts`）：`catch { return null }` 使"目录不存在"与"读失败"无法区分，
+实测形态：`catch { return null }` 使"目录不存在"与"读失败"无法区分，
 判定恒真 → 告警**恒亮 2213 行 / 40 小时**。
 
 **对策**：`catch` 里别返回同形哨兵值；先分形态（`existsSync` / `statSync().isDirectory()`）再判异常。
@@ -279,7 +279,7 @@ netstat -ano | findstr /r /c:"LISTENING.*:<端口>"      →  命中 0 行
   实测本机该 fallback 固定 **13556 字节**。曾拿 200 当"路由活着"，白排查两轮。
   **对策**：测路由看**响应体长度/内容**，或拿一个已知不存在的路由做对照；
   把 fallback 的字节数当常数记下来，一眼分辨。
-- **反向形态：完全不响应，既不是 200 也不是拒连。** 上面那一支好歹还有信号可读（一个码）。当请求**永远挂着不返回**时，"没信号"极易被读成"服务死了"，而三种成因的处置完全不同：进程根本不在 / 进程在但 0% CPU 卡在无上界的等待 / 进程在且打满一个核（事件循环被同步代码饿死）。这一族的判形与现场取证不在本颗，走 `live-state-forensics`。**本颗留给这条的教训是：不要把"取不到读数"直接写成"它没在跑"**——那与 §2 的"空输出有三种成因"是同一个错误，只是发生在服务层。
+- **反向形态：完全不响应，既不是 200 也不是拒连。** 上面那一支好歹还有信号可读（一个码）。当请求**永远挂着不返回**时，"没信号"极易被读成"服务死了"，而三种成因的处置完全不同：进程根本不在 / 进程在但 0% CPU 卡在无上界的等待 / 进程在且打满一个核（事件循环被同步代码饿死）。这一族的判形与现场取证不在本颗，属于运行时现场取证那一类。**本颗留给这条的教训是：不要把"取不到读数"直接写成"它没在跑"**——那与 §2 的"空输出有三种成因"是同一个错误，只是发生在服务层。
 - **探测通道自己会被限制。** 实测：`Get-NetTCPConnection -LocalPort <端口> -State Listen` 返回**空**，
   而同一时刻 `Invoke-WebRequest http://127.0.0.1:<端口>/` 返回 **200 / 13556 B**。
   ⇒ "查不到监听"是**探测被挡**，不是"服务没起"。

@@ -69,15 +69,15 @@ T1 已挂进 `<SHARED>\scripts\skills-update-scheduled.ps1` 的 **2c 步**，位
 `npx skills update` → `sync.ps1` 扇出 → `skills-reconcile.py` 对账 → **`fleet-eval.mjs` 回归套件** → 黑板登记。
 
 > **频率 = 每天 09:00（2026-10-06 已改，本轮现读确认）。**
-> 先前这里断言过"实际是每周一，本机文档里的'每天'是错的"——那条依据是当时 `schtasks /query /tn skills-auto-update /xml` 读到 `CalendarTrigger` + `ScheduleByWeek`（`WeeksInterval=1`、`DaysOfWeek=Monday`、Next Run `2026-10-12 09:00`）。
-> 该断言**已作废**：2026-10-06 按用户确认把触发器改成 `<ScheduleByDay><DaysInterval>1</DaysInterval>`（改前 XML 备份在 `out/skills-auto-update.trigger-backup.xml`）。
+> 先前这里断言过"实际是每周一，本机文档里的'每天'是错的"——那条依据是当时 `schtasks /query /tn <任务名> /xml` 读到 `CalendarTrigger` + `ScheduleByWeek`（`WeeksInterval=1`、`DaysOfWeek=Monday`、Next Run `2026-10-12 09:00`）。
+> 该断言**已作废**：2026-10-06 按用户确认把触发器改成 `<ScheduleByDay><DaysInterval>1</DaysInterval>`（改前 XML 备份在 `out/<任务名>.trigger-backup.xml`）。
 > 现读证据（2026-10-06 12:5x）：`Schedule Type: Daily`、`Days: Every 1 day(s)`、`Next Run Time: 2026/10/7 9:00:00`、`StartBoundary 2026-10-06T09:00:00+08:00` + `<ScheduleByDay><DaysInterval>1</DaysInterval>`。
-> 于是 `sync.ps1` 头部注释第 9 行的"每天 09:00"从此为**正确**，`windows-scheduled-task/SKILL.md` 里的两处 `（每周一 09:00）` / `— 每周一 09:00，` 也已同步改成"每天 09:00"。
+> 于是 `sync.ps1` 头部注释第 9 行的"每天 09:00"从此为**正确**，另一颗定时任务技能的 `SKILL.md` 里的两处 `（每周一 09:00）` / `— 每周一 09:00，` 也已同步改成"每天 09:00"。
 > 影响：漂移最坏**当天**就能被扫到（改前是 7 天）。
 
 为什么要在 2b 之后再补 2c：2b 只看得到**文件内容漂移**，看不见结构/卫生/路由类缺陷——2c 首跑就抓到 3 处 `frontmatter name ≠ 目录名` 和 11 个源树残留，这些 2b 全报 0 漂移。
 
-日志落 `<SHARED>\logs\skills-auto-update.LOG.md`：
+日志落 `<SHARED>\logs\<任务名>.LOG.md`：
 - 全绿 → `| 时间 | fleet-eval 全绿: pass_rate = ... | ✅ |`
 - 有失败 → `| 时间 | fleet-eval 未过 2/9 项: xxx {...} ; yyy {...} | ⚠️ |`，并把这句带进黑板 note。
 

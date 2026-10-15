@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: MIT
 // merge-eval.mjs — 批量内容合入的确定性回归评测套件（T1 层，零依赖、零 API 成本）
 //
 // 设计口径（源自 Anthropic《Demystifying evals for AI agents》与 NVIDIA 2026-05 实践：
@@ -102,48 +103,19 @@ async function ghMainSha() {
   if (!/^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/.test(REMOTE_SLUG)) {
     return { ok: false, why: `MERGE_REPO_SLUG 格式不符 owner/repo："${REMOTE_SLUG}"` };
   }
-  // token 由内层 python 自行向凭据助手取，**不经过 JS 也不打印**
+  // 直接用 `gh api` 读 main 的真实 sha：gh 自行向系统凭据助手取 token，JS 不碰凭据、也不打印。
+  // （2026-10 评审减面：原先此处内嵌一段 Python 手动取 token + urllib 打 API，现由一条 `gh api` 顶替，
+  //   同时消掉"内嵌脚本源码"这一注入面维护点。slug 仍先做 owner/repo 形态预检；gh 缺失/未认证时
+  //   逐个候选带回失败原因，不静默降级。保留强制直连 env，与历史一致。）
   const env = { ...process.env, no_proxy: "*", NO_PROXY: "*", HTTPS_PROXY: "", HTTP_PROXY: "", https_proxy: "", http_proxy: "" };
-  const res = await new Promise((resolve) => {
-    const c = spawn(PYTHON_BIN(),
-      ["-c", `
-import json,sys,subprocess,urllib.request,shutil
-slug=sys.argv[1]
-tried=[]
-tok=None
-for cand in sys.argv[2:]:
-    exe=shutil.which(cand)
-    if not exe:
-        tried.append(cand+" (not found)")
-        continue
-    try:
-        p=subprocess.run([exe,"auth","git-credential","get"],
-          input="protocol=https\\nhost=github.com\\n",capture_output=True,text=True,timeout=15)
-        toks=[l[9:].strip() for l in p.stdout.splitlines() if l.startswith("password=")]
-        if toks:
-            tok=toks[0]
-            break
-        tried.append(cand+" (no credential)")
-    except Exception as e:
-        tried.append(cand+" ("+type(e).__name__+")")
-if not tok:
-    sys.stderr.write("gh fallback unavailable: "+" | ".join(tried))
-    sys.exit(2)
-req=urllib.request.Request("https://api.github.com/repos/"+slug+"/git/refs/heads/main",
-  headers={"Authorization":"Bearer "+tok,"Accept":"application/vnd.github+json","User-Agent":"merge-eval"})
-print(json.loads(urllib.request.urlopen(req,timeout=30).read().decode())["object"]["sha"])
-`, REMOTE_SLUG, ...ghCandidates()], { env, windowsHide: true });
-    const out = [], err = [];
-    c.stdout.on("data", (d) => out.push(d));
-    c.stderr.on("data", (d) => err.push(d));
-    c.on("error", (e) => resolve({ ok: false, why: e.code }));
-    c.on("close", (code) => resolve(code === 0
-      ? { ok: /^[0-9a-f]{40}$/.test((out.join("") || "").trim()) ? true : false,
-          sha: (out.join("") || "").trim(),
-          why: code === 0 ? "输出不合法" : `exit ${code}` }
-      : { ok: false, why: `exit ${code}: ${Buffer.concat(err).toString("utf8").trim().slice(0, 160)}` }));
-  });
-  return res.ok ? { ok: true, sha: res.sha, via: "github-api" } : res;
+  const tried = [];
+  for (const cand of ghCandidates()) {
+    const r = await execFile(cand, ["api", `repos/${REMOTE_SLUG}/git/refs/heads/main`, "--jq", ".object.sha"], { env });
+    const sha = (r.stdout || "").trim();
+    if (r.ok && /^[0-9a-f]{40}$/.test(sha)) return { ok: true, sha, via: "gh-api" };
+    tried.push(`${cand} (${r.ok ? "输出不合法" : "exit " + r.code})`);
+  }
+  return { ok: false, why: "gh api 读取远端 sha 失败：" + tried.join(" | ") };
 }
 
 // 见上方说明：本机同步 spawn 必 EBUSY，故取 sha 也走异步。
@@ -156,9 +128,9 @@ const md5 = (s) => crypto.createHash("md5").update(s).digest("hex");
 // ★ 全部拉子进程一律走异步：本机 Node 的 spawnSync/execFileSync 对任意可执行文件
 //   返回 EBUSY（2026-10-06 实测，与磁盘余量无关），而异步 spawn 正常。
 //   这不是防御性 coding —— 是本机硬事实，写成同步就会静默取不到基线。
-function execFile(cmd, args, { cwd, maxBuffer = 1 << 28 } = {}) {
+function execFile(cmd, args, { cwd, env, maxBuffer = 1 << 28 } = {}) {
   return new Promise((resolve) => {
-    const c = spawn(cmd, args, { cwd, windowsHide: true });
+    const c = spawn(cmd, args, { cwd, ...(env ? { env } : {}), windowsHide: true });
     const out = [], err = [];
     let n = 0, settled = false;
     const fin = (r) => { if (!settled) { settled = true; resolve(r); } };

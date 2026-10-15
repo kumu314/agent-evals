@@ -6,7 +6,17 @@ on:
 
 jobs:
   check:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    # 本套件极度重视 Windows 兼容（GBK 对照臂 / BOM / %SystemDrive% 兜底 / spawnSync EBUSY 绕法），
+    # 却只在 ubuntu 上跑过 CI。补三平台矩阵。统一 shell: bash 让 find/xargs、`VAR=val node` 内联 env
+    # 这些 bash 写法在 windows-latest（Git Bash）/ macos 上同样成立。
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: MIT
 // 一键看效果：拿仓库自带的样例技能库跑 fleet-eval 里"与布局无关"的 5 项断言。
 // fixture-broken 故意留了 4 处缺陷 -> 报红；fixture-clean 修好 -> 全绿。
 // 零配置、零 API 调用、离线可跑。

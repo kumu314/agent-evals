@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: MIT
 // run-checks.mjs — 跨平台一键自检：复刻 CI 的零 API/零网络确定性检查序列。
 // 目的：把 README 里散文版的运行要求变成 `npm test` 一把跑；env 在进程内设置，
 //       不依赖 shell 的 `VAR=val cmd`（那种写法在 Windows cmd/PowerShell 下会崩）。

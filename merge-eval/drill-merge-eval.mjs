@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: MIT
 // drill-merge-eval.mjs — 证明 merge-eval 的判据「真的会红」（F5，2026-10-12）。
 //
 // 思路与 fleet 侧 drill-a1a2 同源：不碰任何活文件，在临时区 git init 一个

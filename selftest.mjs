@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: MIT
 // selftest.mjs — 三颗手写迷你解析器的边界样本回归（F6，2026-10-12）。
 // 跑法：node --test selftest.mjs（零依赖、零 API、不启动任何套件）。
 // 立题：这两套件的判定全押在解析器上——解析器错了，绿是假的。

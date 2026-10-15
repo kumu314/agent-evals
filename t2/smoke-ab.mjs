@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // T2 技能 lift 冒烟 A/B
 // 目的：验证「带技能 vs 不带技能」能否被区分出来 —— 只验管线，不追求统计功效。
 // 设计：同一批任务跑两臂（control 无技能 / treated 带技能正文），确定性正则判分，不用 LLM 当裁判（不额外花钱）。

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: MIT
 // drill-a1a2.mjs — 证明 fleet-eval 新增的 A1/A2 两条检查「真的会红」。
 //
 // 思路：不碰任何活文件，而是把被测对象复制到临时目录、注入一个**真实的缺陷**，

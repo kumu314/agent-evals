@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: MIT
 // fleet-eval.mjs — 本机 agent 资产舰队的确定性回归评测套件（T1 层，零 API 成本）。
 //
 // 设计遵循 2026-10-06 检索到的共识（Anthropic《Demystifying evals for AI agents》/ NVIDIA）：

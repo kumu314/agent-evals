@@ -4,16 +4,23 @@
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-15
+
+外部评审落地（2026-10-15）：CI 三平台矩阵、ghMainSha 注入面归零、merge-eval 耦合前置声明、SPDX/.nvmrc；并把上一轮的 `package.json` / `run-checks.mjs` / CI fleet-core 自检一并纳入本版。
+
 ### 新增
 - `package.json`：声明运行时门槛 `engines.node >= 20.11` 与一键自检入口 `npm test`（= `node run-checks.mjs`）。
 - `run-checks.mjs`：跨平台一键自检器，env 在进程内设（不依赖 shell 的 `VAR=val` 前缀，Windows 可跑），复刻 CI 的零 API/零网络自检序列（selftest + T2 `--dry` + demo + merge-eval drill + fleet-eval core），逐步 rc 台账，任一失败即非零退出。
 - CI 增 `fleet-eval core 作用域自检`（`FLEET_SCOPE=core` 跑仓库自带样例库，零网络），补上 CI 此前未覆盖 fleet core 断言的盲区。
+- `.nvmrc`（=20）对齐 CI 的 node 版本；全部 `.mjs` 文件头补 `SPDX-License-Identifier: MIT`。
 
 ### 变更
 - README 快速开始补 `npm test` 一行，把散文版运行要求指向一条可复跑命令。
+- CI 补 ubuntu-latest / windows-latest / macos-latest 三平台矩阵，统一 `shell: bash`（本套件极重 Windows 兼容，此前却只在 ubuntu 跑过 CI）。
+- merge-eval `ghMainSha`：读远端 sha 的降级路径由内嵌 Python（取 token + urllib）改为一条 `gh api repos/<slug>/git/refs/heads/main --jq .object.sha`，内嵌脚本源码整段移除、注入面归零。
 
 ### 修复
-- SECURITY.md 与代码/CI 对齐：命令注入条目原写“已知、尚未修复”，但 0.2.0 已将 `MERGE_REPO_SLUG` 改经 argv 传入并做 `owner/repo` 形态预检（CHANGELOG 0.2.0 已记），据此订正为“已修复”并补上残留边界；CI 工作流条目从“两个零 API 自检”更新为当前自检步清单，并去掉指向内部规划的悬空引用。
+- SECURITY.md 与代码/CI 对齐：命令注入条目随 `ghMainSha` 减面更新为"内嵌脚本源码整段移除"；merge-eval README 顶部前置声明判据绑定 `index.html`+`const POEMS`+`review-*.md` 内容站形态。
 
 ## [0.2.0] - 2026-10-13
 

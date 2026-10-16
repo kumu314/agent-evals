@@ -27,21 +27,22 @@
 
 t2 是**模型档位选型工具**，不是"技能通用有效性"工具。它回答的问题是「把这颗 skill 注入到某个模型档位，能不能让该档位在该任务上从 FAIL 变 PASS」——这个答案**高度依赖模型能力上限**。
 
-**实测证据（24 次双臂 A/B × 2 provider）**：
+**实测证据（24 次双臂 A/B × 3 provider）**：
 
 | provider | 模型 | control pass | treated pass | lift |
 |---|---|---|---|---|
 | DeepSeek | deepseek-chat | 25% (3/12) | 100% (12/12) | **+75 pp** |
 | zhipu | glm-4-flash | 25% (3/12) | 25% (3/12) | **0 pp** |
+| MIMO | mimo-v2.6-flash | 25% (3/12) | 100% (11/11 有效调用，1 次上游断连单列) | **+75 pp** |
 
-同一批 skill、同一套判据、同一组任务，仅换模型档位，lift 从 +75 跌到 0。机理：轻量模型 treated 输出明显变长（说明 skill 被读到并引用了），但具体判据词不命中——抽象规则无法落到可判分的具体表述。
+同一批 skill、同一套判据、同一组任务，仅换模型，lift 从 +75（DeepSeek、MIMO）到 0（智谱）。机理（glm-4-flash）：treated 输出明显变长（说明 skill 被读到并引用了），但具体判据词不命中——抽象规则无法落到可判分的具体表述。同为 flash 档的 mimo-v2.6-flash 却全部命中：**“档位”不能跨品牌画等号**，选型要测到具体模型，不能只认档位名。
 
 **使用建议**：
 - 想验证"我的 skill 到底有没有用"→ 先确保测试档位 ≥ 目标部署档位，否则测的是模型上限而不是 skill 质量。
 - 想选"该给 agent 配哪个模型档位"→ 同一条 skill 在不同档位 lift 的差异就是档位选择依据。
 - 不要把"lift=0"解读为"skill 没用"——它只是说"这个档位读不懂"。
 
-详见 [v0.3.0 Release Notes](https://github.com/kumu314/agent-evals/releases/tag/v0.3.0) 完整 24 行双臂读数。
+DeepSeek + zhipu 的完整 24 行双臂读数见 [v0.3.0 Release Notes](https://github.com/kumu314/agent-evals/releases/tag/v0.3.0)；MIMO 臂读数与口径见 CHANGELOG [Unreleased] 验证段。
 
 
 ## 快速开始

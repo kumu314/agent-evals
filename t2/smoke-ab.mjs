@@ -5,6 +5,7 @@
 // 用法：
 //   node smoke-ab.mjs --dry                     # 零调用：用预置答案证明判分管线有判别力
 //   $env:T2_BASE_URL=...; $env:T2_API_KEY=...; $env:T2_MODEL=...
+//   $env:T2_DISABLE_THINKING="1"   # 可选：混合思考模型（mimo 等）显式关思考，避开 60s 超时
 //   node smoke-ab.mjs                           # 真跑
 import fs from 'node:fs';
 import path from 'node:path';
@@ -139,6 +140,9 @@ async function askOnce(system, user) {
         model: MODEL,
         messages: [ { role: 'system', content: system }, { role: 'user', content: user } ],
         temperature: 0,
+        // 混合思考模型（如 mimo-v2.6-flash）默认开思考：首 token 延迟高、单次可超 60s 撞上面的超时。
+        // T2_DISABLE_THINKING=1 显式关闭（官方 OpenAI 兼容参数 thinking.type）；其他 provider 不带此参数，行为不变。
+        ...(process.env.T2_DISABLE_THINKING === '1' ? { thinking: { type: 'disabled' } } : {}),
       }),
       signal: ctl.signal,
     });

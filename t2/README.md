@@ -30,6 +30,7 @@ node smoke-ab.mjs
 | `T2_BASE_URL` | OpenAI 兼容端点（结尾的 `/` 可有可无） | 必填 |
 | `T2_API_KEY` | 密钥 | 必填 |
 | `T2_MODEL` | 模型名 | 必填 |
+| `T2_DISABLE_THINKING` | 设 `1` 时随请求发官方参数 `thinking:{type:"disabled"}`。混合思考模型（实测：小米 `mimo-v2.6-flash`）默认开思考，真实任务单次可达 94s，会撞 `askOnce` 的 60s 超时；其他 provider 不带该参数，行为不变 | 关 |
 | `T2_TRIALS` | 每臂每任务跑几次 | `3` |
 | `T2_SKILL_ROOT` | 技能库根目录 | 本目录下 `skills/` |
 | `T2_TASK` | 只跑指定任务（逗号分隔 id） | 全部 |

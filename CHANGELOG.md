@@ -4,6 +4,14 @@
 
 ## [Unreleased]
 
+### 新增
+- t2 支持混合思考模型：opt-in `T2_DISABLE_THINKING=1` 随请求发送官方参数 `thinking:{type:"disabled"}`。实测小米 MIMO `mimo-v2.6-flash` 默认开思考，真实任务单次 94s，必撞 `askOnce` 的 60s 超时；且思考模式下给小 `max_tokens` 时 `content` 为空（reasoning 吃满预算，`finish_reason=length`）。不设该变量时请求体一字不改，DeepSeek / zhipu 既有读数口径不受影响。
+
+### 验证
+- **t2 真跑 A/B（第三 provider：小米 MIMO，2026-10-16）**：OpenAI 兼容通道 `https://api.xiaomimimo.com/v1`，模型 `mimo-v2.6-flash`（与 zhipu `glm-4-flash` 同 flash 档横比；pro 档已由 DeepSeek 覆盖），关思考后双臂 × 4 任务 × 3 trials = 24 次生成，打分口径不变。
+  - control 通过率 **25%**（3/12，全在 `bad-advice-runtime` 撞天花板，与 DeepSeek / glm-4-flash 同表现）、treated 通过率 **100%**（11/11 有效调用；1 次上游断连 `terminated` 按口径报错单列，不混进通过率）、**lift = +75 个百分点**。
+  - 与 zhipu lift=0 的对照说明：**同为 flash 档，跨品牌结论不能画等号**——mimo-v2.6-flash treated 判据词全部命中，glm-4-flash 一条不中。“档位”只是粗筛，t2 测的仍是「skill 注入到具体这个模型是否有效」；三个 provider 读数并列汇报，不择好。
+
 ## [0.3.0] - 2026-10-15
 
 外部评审落地（2026-10-15）：CI 三平台矩阵、ghMainSha 注入面归零、merge-eval 耦合前置声明、SPDX/.nvmrc；并把上一轮的 `package.json` / `run-checks.mjs` / CI fleet-core 自检一并纳入本版。

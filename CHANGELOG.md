@@ -26,7 +26,10 @@
 - **t2 真跑 A/B（评审 #3 落地）**：本机 DeepSeek（`deepseek-chat`，`temperature=0`）双臂 × 4 任务 × 3 trials = 24 次生成；打分仍走确定性正则，不用 LLM 当裁判（零额外成本）。
   - control 通过率 **25%**（3/12）、treated 通过率 **100%**（12/12）、**lift = 75 个百分点**。
   - 4 项任务中 3 项两臂完全拉开（`merge-verify-ritual` / `guard-never-fires` / `tautology-detector`）；1 项两臂撞天花板（`bad-advice-runtime`，DeepSeek 已内化该知识）——如实记录，不粉饰。
-  - 跨 provider 复现本轮未做（本机 OpenRouter 无 credit / 百炼 429 限流），留待后续。
+  - **跨 provider 复现（2026-10-16 补，zhipu glm-4-flash）**：换 OpenAI 兼容通道 `https://open.bigmodel.cn/api/paas/v4`，同 4 任务 × 3 trials × 2 臂 = 24 次生成，打分口径不变。
+    - control 通过率 **25%**（3/12，全在 `bad-advice-runtime`）、treated 通过率 **25%**（3/12，同）、**lift = 0 个百分点**。
+    - 机理分析（不是格式问题，是模型能力上限）：`bad-advice-runtime` 双臂都撞 PASS 天花板（glm-4-flash 对该题已内化，与 DeepSeek 同表现）；其余 3 项 control 全 FAIL、treated 也 FAIL——treated 输出**明显变长**（例 `merge-verify-ritual` 从 551 字符 → 1199 字符），但具体判据词（`REST.state=merged` / `硬编码脆弱` / `列序根因`）不命中，小模型没能力把技能里的抽象规则落到可判分的具体表述。
+    - 与 DeepSeek lift=75 的对照说明：t2 测的是「skill 注入到该模型档位是否有效」，不是「skill 本身对不对」；不同 provider / 档位读数**必须并列汇报不可择好**（择好即作弊）。原始 24 行读数：见 v0.3.0 Release Notes 补充段。
 
 ## [0.2.0] - 2026-10-13
 

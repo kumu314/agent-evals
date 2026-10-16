@@ -7,6 +7,9 @@
 ### 新增
 - t2 支持混合思考模型：opt-in `T2_DISABLE_THINKING=1` 随请求发送官方参数 `thinking:{type:"disabled"}`。实测小米 MIMO `mimo-v2.6-flash` 默认开思考，真实任务单次 94s，必撞 `askOnce` 的 60s 超时；且思考模式下给小 `max_tokens` 时 `content` 为空（reasoning 吃满预算，`finish_reason=length`）。不设该变量时请求体一字不改，DeepSeek / zhipu 既有读数口径不受影响。
 
+### 变更
+- merge-eval 面戳位命名约定参数化：`review-<批次>-<面戳>.md` 的 strict 判据里"面戳以字母开头、不以数字开头"这段正则由写死改为 profile 键 `faceStampPattern`（正则片段），默认值与旧硬编码逐字节一致（drill 四场景 7/7 行为不变）；坏正则片段在 `loadProfile` 加载期即退出码 2（配置 fail-closed，不留到运行时炸）。至此 `CHECKS` 里写死的只剩"数据块 + 逐篇评审文件"这个基本形态，merge-eval README 适用范围声明同步。
+
 ### 验证
 - **t2 真跑 A/B（第三 provider：小米 MIMO，2026-10-16）**：OpenAI 兼容通道 `https://api.xiaomimimo.com/v1`，模型 `mimo-v2.6-flash`（与 zhipu `glm-4-flash` 同 flash 档横比；pro 档已由 DeepSeek 覆盖），关思考后双臂 × 4 任务 × 3 trials = 24 次生成，打分口径不变。
   - control 通过率 **25%**（3/12，全在 `bad-advice-runtime` 撞天花板，与 DeepSeek / glm-4-flash 同表现）、treated 通过率 **100%**（11/11 有效调用；1 次上游断连 `terminated` 按口径报错单列，不混进通过率）、**lift = +75 个百分点**。

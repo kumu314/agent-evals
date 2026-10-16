@@ -52,6 +52,7 @@ const PROFILE_DEFAULTS = {
   arrayMarker: "POEMS",
   reportDir: "out",
   reportPrefix: "review-",
+  faceStampPattern: "(?!\\d)[A-Za-z][\\w-]*",
   baselineFile: "out/merge/index.baseline-before-merge.html",
   remoteRef: "refs/heads/main",
   localRef: "HEAD",
@@ -60,7 +61,13 @@ function loadProfile() {
   if (!fs.existsSync(PROFILE_FILE)) return PROFILE_DEFAULTS;
   try {
     const raw = JSON.parse(fs.readFileSync(PROFILE_FILE, "utf8"));
-    return { ...PROFILE_DEFAULTS, ...raw };
+    const p = { ...PROFILE_DEFAULTS, ...raw };
+    // faceStampPattern 以正则片段身份拼进判据：坏配置必须在加载期退出，不留到运行时炸。
+    try { new RegExp(p.faceStampPattern); } catch (e2) {
+      console.error(`[merge-eval] profile.faceStampPattern 不是合法正则片段：${String(e2.message).slice(0, 120)}`);
+      process.exit(2);
+    }
+    return p;
   } catch (e) {
     console.error(`[merge-eval] profile.json 解析失败：${String(e.message).slice(0, 200)}`);
     console.error(`[merge-eval] 路径：${PROFILE_FILE}`);
@@ -354,8 +361,9 @@ const CHECKS = [
         //   **可见 ≠ 判据正确** —— 命中错了它照样 PASS。
         // 正解：**锚定面戳位** —— 批次名之后要么直接 .md，要么 `-` + 面戳。
         // 面戳是团队约定（文件名带执行面，避免多会话同名撞单）。
+        //   约定本体（默认：字母开头、不以数字开头）已参数化为 profile.faceStampPattern（正则片段）。
         const safe = b.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-        const strict = new RegExp(`^${PROFILE.reportPrefix}${safe}(\\.md|-(?!\\d)[A-Za-z][\\w-]*\\.md)$`);
+        const strict = new RegExp(`^${PROFILE.reportPrefix}${safe}(\\.md|-${PROFILE.faceStampPattern}\\.md)$`);
         // 宽松版：面戳任意非空（用于识别"有候选但格式不符"，不静默跳过）
         const loose = new RegExp(`^${PROFILE.reportPrefix}${safe}[-.]`);
         let hit = null, files = [];

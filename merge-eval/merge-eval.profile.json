@@ -3,6 +3,7 @@
   "arrayMarker": "POEMS",
   "reportDir": "out",
   "reportPrefix": "review-",
+  "faceStampPattern": "(?!\\d)[A-Za-z][\\w-]*",
   "baselineFile": "out/merge/index.baseline-before-merge.html",
   "remoteRef": "refs/heads/main",
   "localRef": "HEAD"

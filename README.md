@@ -27,7 +27,9 @@
 
 t2 是**模型档位选型工具**，不是"技能通用有效性"工具。它回答的问题是「把这颗 skill 注入到某个模型档位，能不能让该档位在该任务上从 FAIL 变 PASS」——这个答案**高度依赖模型能力上限**。
 
-**实测证据（24 次双臂 A/B × 3 provider）**：
+**实测证据**：分两批跑。第一批 4 任务证明管线能把双臂拉开；扩批把样本翻倍（4→8 任务）后复核效应量。
+
+第一批（4 任务 × 3 trials × 2 臂 = 每臂 12 次）：
 
 | provider | 模型 | control pass | treated pass | lift |
 |---|---|---|---|---|
@@ -35,14 +37,24 @@ t2 是**模型档位选型工具**，不是"技能通用有效性"工具。它�
 | zhipu | glm-4-flash | 25% (3/12) | 25% (3/12) | **0 pp** |
 | MIMO | mimo-v2.6-flash | 25% (3/12) | 100% (11/11 有效调用，1 次上游断连单列) | **+75 pp** |
 
-同一批 skill、同一套判据、同一组任务，仅换模型，lift 从 +75（DeepSeek、MIMO）到 0（智谱）。机理（glm-4-flash）：treated 输出明显变长（说明 skill 被读到并引用了），但具体判据词不命中——抽象规则无法落到可判分的具体表述。同为 flash 档的 mimo-v2.6-flash 却全部命中：**“档位”不能跨品牌画等号**，选型要测到具体模型，不能只认档位名。
+扩批（8 任务 × 3 trials × 2 臂 = 每臂 24 次，样本翻倍复核）：
+
+| provider | 模型 | control pass | treated pass | lift |
+|---|---|---|---|---|
+| DeepSeek | deepseek-chat | 13% (3/24) | 79% (19/24) | **+67 pp** |
+| MIMO | mimo-v2.6-flash | 21% (5/24) | 75% (18/24) | **+54 pp** |
+| zhipu | glm-4-flash | 缺 key，本轮未复跑扩批（第一批 lift 0 保留） | | |
+
+两批合看：**方向不变**——双臂仍显著拉开；但**精确效应量收敛**（+75 → +54~+67 pp）。新增任务的判据更贴近"技能正文独有、裸模型答不到"的细颗粒点，真实模型措辞未必逐条命中（如 MIMO 在 `merge-verify-ritual` treated 三试全 FAIL，DeepSeek 在 `push-hung-recheck` 判据偏紧），而个别 control 撞天花板（`push-hung-recheck` 两模型裸答也命中）。+75 pp 是小样本 + 精选任务下的乐观读数，+54~+67 pp 是扩样后更保守的估计——这恰好印证该带的话：**lift 是方向性证据，不是精确效应量**。
+
+跨品牌对照（第一批）仍成立：同一批 skill、同一套判据、同一组任务，仅换模型，lift 从 +75（DeepSeek、MIMO）到 0（智谱）。机理（glm-4-flash）：treated 输出明显变长（说明 skill 被读到并引用了），但具体判据词不命中——抽象规则无法落到可判分的具体表述。同为 flash 档的 mimo-v2.6-flash 却全部命中：**"档位"不能跨品牌画等号**，选型要测到具体模型，不能只认档位名。
 
 **使用建议**：
 - 想验证"我的 skill 到底有没有用"→ 先确保测试档位 ≥ 目标部署档位，否则测的是模型上限而不是 skill 质量。
 - 想选"该给 agent 配哪个模型档位"→ 同一条 skill 在不同档位 lift 的差异就是档位选择依据。
 - 不要把"lift=0"解读为"skill 没用"——它只是说"这个档位读不懂"。
 
-DeepSeek + zhipu 的完整 24 行双臂读数见 [v0.3.0 Release Notes](https://github.com/kumu314/agent-evals/releases/tag/v0.3.0)；MIMO 臂读数与口径见 CHANGELOG [Unreleased] 验证段。
+第一批完整双臂读数见 [v0.3.0 Release Notes](https://github.com/kumu314/agent-evals/releases/tag/v0.3.0)；扩批 8 任务的双臂逐试读数与口径见 CHANGELOG [Unreleased] 验证段。
 
 
 ## 快速开始
@@ -82,7 +94,7 @@ node t2/smoke-ab.mjs --dry
 
 ```text
 provider = DRY (零调用)
-tasks    = bad-advice-runtime(runtime-resolution-and-abi), merge-verify-ritual(silent-failure-triage), guard-never-fires(silent-failure-triage), tautology-detector(criterion-self-evidence-check)   trials/arm = 3   arms = control+treated
+tasks    = bad-advice-runtime(runtime-resolution-and-abi), merge-verify-ritual(silent-failure-triage), guard-never-fires(silent-failure-triage), tautology-detector(criterion-self-evidence-check), changed-but-not-visible(stale-output-layers), stale-line-citation(line-anchor-drift), hash-mismatch-invisible(text-encoding-forensics), push-hung-recheck(git-push-fake-timeout)   trials/arm = 3   arms = control+treated
 ------------------------------------------------------------------------
 [control] bad-advice-runtime t1  FAIL      (无命中)  61c
 [control] bad-advice-runtime t2  FAIL      (无命中)  61c
@@ -108,9 +120,33 @@ tasks    = bad-advice-runtime(runtime-resolution-and-abi), merge-verify-ritual(s
 [treated] tautology-detector t1  PASS      硬编码脆弱,换统计量  90c
 [treated] tautology-detector t2  PASS      硬编码脆弱,换统计量  90c
 [treated] tautology-detector t3  PASS      硬编码脆弱,换统计量  90c
+[control] changed-but-not-visible t1  FAIL      (无命中)  70c
+[control] changed-but-not-visible t2  FAIL      (无命中)  70c
+[control] changed-but-not-visible t3  FAIL      (无命中)  70c
+[treated] changed-but-not-visible t1  PASS      身份非缓存,分层定位,取证读数  229c
+[treated] changed-but-not-visible t2  PASS      身份非缓存,分层定位,取证读数  229c
+[treated] changed-but-not-visible t3  PASS      身份非缓存,分层定位,取证读数  229c
+[control] stale-line-citation t1  FAIL      (无命中)  54c
+[control] stale-line-citation t2  FAIL      (无命中)  54c
+[control] stale-line-citation t3  FAIL      (无命中)  54c
+[treated] stale-line-citation t1  PASS      行号不稳定,改数字治标,换内容锚  192c
+[treated] stale-line-citation t2  PASS      行号不稳定,改数字治标,换内容锚  192c
+[treated] stale-line-citation t3  PASS      行号不稳定,改数字治标,换内容锚  192c
+[control] hash-mismatch-invisible t1  FAIL      (无命中)  57c
+[control] hash-mismatch-invisible t2  FAIL      (无命中)  57c
+[control] hash-mismatch-invisible t3  FAIL      (无命中)  57c
+[treated] hash-mismatch-invisible t1  PASS      不可见字节,hexdump取证,diff会漏  238c
+[treated] hash-mismatch-invisible t2  PASS      不可见字节,hexdump取证,diff会漏  238c
+[treated] hash-mismatch-invisible t3  PASS      不可见字节,hexdump取证,diff会漏  238c
+[control] push-hung-recheck  t1  FAIL      (无命中)  73c
+[control] push-hung-recheck  t2  FAIL      (无命中)  73c
+[control] push-hung-recheck  t3  FAIL      (无命中)  73c
+[treated] push-hung-recheck t1  PASS      中断不等于失败,认远端读数,不信自述  263c
+[treated] push-hung-recheck t2  PASS      中断不等于失败,认远端读数,不信自述  263c
+[treated] push-hung-recheck t3  PASS      中断不等于失败,认远端读数,不信自述  263c
 ------------------------------------------------------------------------
-control 有效 12/12（通过 0）  工具调用 0  报错 0
-treated 有效 12/12（通过 12）  工具调用 0  报错 0
+control 有效 24/24（通过 0）  工具调用 0  报错 0
+treated 有效 24/24（通过 24）  工具调用 0  报错 0
 control pass = 0%    treated pass = 100%    lift = 100 个百分点
 => 两臂可区分（管线有判别力）
 ```
@@ -134,7 +170,7 @@ agent-evals/
 ├── selftest.mjs       lib/parsers.mjs 的单元测试（node:test，零依赖）
 └── t2/                技能增益 A/B（需要 API key）
     ├── smoke-ab.mjs
-    └── skills/        三颗被测技能（自研，MIT）
+    └── skills/        七颗被测技能（自研，MIT）
 ```
 
 ## 一处诚实说明

@@ -6,6 +6,8 @@
 
 ### 新增
 - t2 支持混合思考模型：opt-in `T2_DISABLE_THINKING=1` 随请求发送官方参数 `thinking:{type:"disabled"}`。实测小米 MIMO `mimo-v2.6-flash` 默认开思考，真实任务单次 94s，必撞 `askOnce` 的 60s 超时；且思考模式下给小 `max_tokens` 时 `content` 为空（reasoning 吃满预算，`finish_reason=length`）。不设该变量时请求体一字不改，DeepSeek / zhipu 既有读数口径不受影响。
+- t2 扩批：新增 4 颗被测技能（`stale-output-layers` / `line-anchor-drift` / `text-encoding-forensics` / `git-push-fake-timeout`，均 MIT、去个人信息）与对应 4 条任务，`smoke-ab.mjs` 的 `TASKS` / `DRY_ANSWERS` 同步扩到 8 任务，样本量从每臂 12 提到 24。`--dry` 双臂仍完全拉开（每臂 24 次，control 0 / treated 24 / lift 100）。
+- 新增 `docs/maintainer-runbook.md`：单维护者项目的接管指引——三十秒心智模型、按成本从低到高排序的跑法表、加一颗 t2 技能+任务（判据设计、dry 不过禁进真跑）、加/改断言（必须同改 drill 造负例、fail-closed、`FLEET_SCOPE=core` 解耦布局耦合）、红了怎么排查、发版清单、环境依赖。
 
 ### 变更
 - merge-eval 面戳位命名约定参数化：`review-<批次>-<面戳>.md` 的 strict 判据里"面戳以字母开头、不以数字开头"这段正则由写死改为 profile 键 `faceStampPattern`（正则片段），默认值与旧硬编码逐字节一致（drill 四场景 7/7 行为不变）；坏正则片段在 `loadProfile` 加载期即退出码 2（配置 fail-closed，不留到运行时炸）。至此 `CHECKS` 里写死的只剩"数据块 + 逐篇评审文件"这个基本形态，merge-eval README 适用范围声明同步。
@@ -14,6 +16,11 @@
 - **t2 真跑 A/B（第三 provider：小米 MIMO，2026-10-16）**：OpenAI 兼容通道 `https://api.xiaomimimo.com/v1`，模型 `mimo-v2.6-flash`（与 zhipu `glm-4-flash` 同 flash 档横比；pro 档已由 DeepSeek 覆盖），关思考后双臂 × 4 任务 × 3 trials = 24 次生成，打分口径不变。
   - control 通过率 **25%**（3/12，全在 `bad-advice-runtime` 撞天花板，与 DeepSeek / glm-4-flash 同表现）、treated 通过率 **100%**（11/11 有效调用；1 次上游断连 `terminated` 按口径报错单列，不混进通过率）、**lift = +75 个百分点**。
   - 与 zhipu lift=0 的对照说明：**同为 flash 档，跨品牌结论不能画等号**——mimo-v2.6-flash treated 判据词全部命中，glm-4-flash 一条不中。“档位”只是粗筛，t2 测的仍是「skill 注入到具体这个模型是否有效」；三个 provider 读数并列汇报，不择好。
+- **t2 真跑 A/B（扩批 8 任务复核，2026-10-16，每臂 24 次 = 48 次/provider）**：通道与打分口径与第一批一致（确定性正则，不用 LLM 当裁判）。
+  - DeepSeek `deepseek-chat`（`temperature=0`）：control **13%**（3/24，命中全在 `bad-advice-runtime` 撞天花板）、treated **79%**（19/24）、**lift = +67 pp**；工具调用 0、报错 0。treated 未满分——`push-hung-recheck` 三试全 FAIL、`stale-line-citation` FAIL×2/PASS×1，其余 6 任务全 PASS。扩批新任务判据对真实模型措辞更严（dry 满分靠预置答案保证，不等同于真跑）。
+  - MIMO `mimo-v2.6-flash`（`T2_DISABLE_THINKING=1`）：control **21%**（5/24，`bad-advice-runtime` + `push-hung-recheck` 撞天花板）、treated **75%**（18/24）、**lift = +54 pp**；工具调用 0、报错 0。treated `merge-verify-ritual` 三试全 FAIL、`changed-but-not-visible` FAIL×2/PASS×1、`hash-mismatch-invisible` FAIL×1/PASS×2。
+  - zhipu `glm-4-flash`：本机缺 key，本轮未复跑扩批；第一批 4 任务读数（lift 0）保留，不臆造。
+  - **口径澄清（回应第一批的样本量局限）**：扩批将每臂样本从 12 提到 24，双臂方向不变（仍显著拉开），但精确效应量由 +75 收敛到 +54~+67 pp。+75 pp 是小样本 + 精选任务的乐观读数，如实并列，不择好。
 
 ## [0.3.0] - 2026-10-15
 

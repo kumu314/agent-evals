@@ -42,8 +42,34 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 //   所以被测仓库路径一律由外部传入，不再靠相对路径猜。
 // 被测仓库路径由 MERGE_REPO 传入（可移植，不写死任何人的本机路径）
 const REPO = path.resolve(process.env.MERGE_REPO || ".");
-const INDEX = path.join(REPO, "index.html");
-const BASELINE = path.join(REPO, "out", "merge", "index.baseline-before-merge.html");
+
+// ★ profile.json：把仓库耦合面（入口文件 / 数据数组名 / 报告目录 + 命名前缀 / 基线文件路径 / 远端本地 ref）
+//   抽到一个数据文件里，让本评测器不再绑死单一目标仓库；默认值与旧硬编码逐字节一致。
+//   缺文件 → 回落 defaults（drill 无需 fixture 也能全绿）；坏文件 → 立即退出码 2（配置不能静默降级）。
+const PROFILE_FILE = path.join(HERE, "merge-eval.profile.json");
+const PROFILE_DEFAULTS = {
+  entryFile: "index.html",
+  arrayMarker: "POEMS",
+  reportDir: "out",
+  reportPrefix: "review-",
+  baselineFile: "out/merge/index.baseline-before-merge.html",
+  remoteRef: "refs/heads/main",
+  localRef: "HEAD",
+};
+function loadProfile() {
+  if (!fs.existsSync(PROFILE_FILE)) return PROFILE_DEFAULTS;
+  try {
+    const raw = JSON.parse(fs.readFileSync(PROFILE_FILE, "utf8"));
+    return { ...PROFILE_DEFAULTS, ...raw };
+  } catch (e) {
+    console.error(`[merge-eval] profile.json 解析失败：${String(e.message).slice(0, 200)}`);
+    console.error(`[merge-eval] 路径：${PROFILE_FILE}`);
+    process.exit(2);
+  }
+}
+const PROFILE = loadProfile();
+const INDEX = path.join(REPO, PROFILE.entryFile);
+const BASELINE = path.join(REPO, PROFILE.baselineFile);
 
 // ★ ref 写死，避免以后拿错 ref 比对得到「不等」的假红：
 //   远端读的是 REMOTE_REF，本地读的是本地 HEAD（HEAD === main，此处已实测一致）。
@@ -62,8 +88,8 @@ const PYTHON_BIN = () => {
 // 空slug 会拼出 `/repos//git/...` 这种畸形 URL，然后报一个和真实原因无关的错。
 // 这是「缺项当通过」的同族：没配就该说没配，不该发一个注定失败的请求然后含糊其辞。
 const REMOTE_SLUG = process.env.MERGE_REPO_SLUG || "";
-const REMOTE_REF = "refs/heads/main";
-const LOCAL_REF = "HEAD";
+const REMOTE_REF = PROFILE.remoteRef;
+const LOCAL_REF = PROFILE.localRef;
 
 /* ── 工具 ───────────────────────────────────────────────────────── */
 
@@ -145,7 +171,7 @@ function execFile(cmd, args, { cwd, env, maxBuffer = 1 << 28 } = {}) {
   });
 }
 
-const gitShow = (ref) => execFile("git", ["show", `${ref}:index.html`], { cwd: REPO });
+const gitShow = (ref) => execFile("git", ["show", `${ref}:${PROFILE.entryFile}`], { cwd: REPO });
 
 // 读某文件在 HEAD 处的 blob sha —— **不可变指向**。
 // 闸门/交付尾巴要记 `path@sha` 而不是光记 path：文件是可变对象，路径能被覆盖，sha 不能。
@@ -166,7 +192,7 @@ const CHECKS = [
     desc: "防假绿第一条：POEMS 能解析出且条数 > 0、id 列表非空。什么都没扫到却全绿是最贵的假绿。",
     run() {
       if (!fs.existsSync(INDEX)) return { ok: false, detail: "index.html 不存在", metrics: {} };
-      const arr = extractPoems(fs.readFileSync(INDEX, "utf8"));
+      const arr = extractPoems(fs.readFileSync(INDEX, "utf8"), PROFILE.arrayMarker);
       if (!arr) return { ok: false, detail: "找不到 const POEMS 数组", metrics: {} };
       let parsed;
       try { parsed = JSON.parse(arr); } catch (e) {
@@ -284,7 +310,7 @@ const CHECKS = [
       const a = ctx.baselineRaw, b = ctx.currentRaw;
       if (a === b) return { ok: true, detail: "全文逐字节相同（未做任何改动）", metrics: { bytes: b.length } };
       // 切出 POEMS 之外的 prefix / suffix
-      const ea = extractPoems(a), eb = extractPoems(b);
+      const ea = extractPoems(a, PROFILE.arrayMarker), eb = extractPoems(b, PROFILE.arrayMarker);
       if (!ea || !eb) return { ok: false, detail: "无法定位 POEMS 数组（结构异常）", metrics: {} };
       const preA = a.slice(0, a.indexOf(ea)), preB = b.slice(0, b.indexOf(eb));
       const sufA = a.slice(a.indexOf(ea) + ea.length), sufB = b.slice(b.indexOf(eb) + eb.length);
@@ -297,11 +323,11 @@ const CHECKS = [
       const blocks = (t) =>
         [...t.matchAll(/<(script|style)[^>]*>[\s\S]*?<\/\1>/g)]
           .map((m) => m[0])
-          .filter((s) => !s.includes("const POEMS"));
+          .filter((s) => !s.includes("const " + PROFILE.arrayMarker));
       const ba = blocks(a), bb = blocks(b);
       const blocksOk = ba.length === bb.length && ba.every((x, i) => x === bb[i]);
       const skipped = [...a.matchAll(/<(script|style)[^>]*>[\s\S]*?<\/\1>/g)]
-        .map((m) => m[0]).filter((s) => s.includes("const POEMS")).length;
+        .map((m) => m[0]).filter((s) => s.includes("const " + PROFILE.arrayMarker)).length;
       return {
         ok: preOk && sufOk && blocksOk,
         detail: `prefix=${preOk ? "同" : "异"} suffix=${sufOk ? "同" : "异"} `
@@ -322,16 +348,16 @@ const CHECKS = [
       }
       const missing = [], noPass = [], untracked = [], badFace = [];
       const found = [];
-      const OUTDIR = path.join(REPO, "out");
+      const OUTDIR = path.join(REPO, PROFILE.reportDir);
       for (const b of batches) {
         // ⚠ 不能用 `review-${b}*.md`：那会让 `review-x-010-y.md` 被 `x-01` 前缀命中。
         //   **可见 ≠ 判据正确** —— 命中错了它照样 PASS。
         // 正解：**锚定面戳位** —— 批次名之后要么直接 .md，要么 `-` + 面戳。
         // 面戳是团队约定（文件名带执行面，避免多会话同名撞单）。
         const safe = b.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-        const strict = new RegExp(`^review-${safe}(\\.md|-(?!\\d)[A-Za-z][\\w-]*\\.md)$`);
+        const strict = new RegExp(`^${PROFILE.reportPrefix}${safe}(\\.md|-(?!\\d)[A-Za-z][\\w-]*\\.md)$`);
         // 宽松版：面戳任意非空（用于识别"有候选但格式不符"，不静默跳过）
-        const loose = new RegExp(`^review-${safe}[-.]`);
+        const loose = new RegExp(`^${PROFILE.reportPrefix}${safe}[-.]`);
         let hit = null, files = [];
         try {
           files = fs.readdirSync(OUTDIR);
@@ -352,9 +378,9 @@ const CHECKS = [
         // ★ 三种状态不可并成一个中性标签（评审指出）：
         //   missing / untracked / path@blobsha。
         //   「未入库」不是可接受的中间状态 —— 取不到不可变指向就等于物证不可复读。
-        const sha = await fileBlobSha(`out/${hit}`);
+        const sha = await fileBlobSha(`${PROFILE.reportDir}/${hit}`);
         if (!sha) { untracked.push(`${b}(${hit}存在但未提交)`); continue; }
-        found.push(`${b}→out/${hit}@${sha.slice(0, 12)}`);
+        found.push(`${b}→${PROFILE.reportDir}/${hit}@${sha.slice(0, 12)}`);
       }
       const bad = missing.length + noPass.length + untracked.length;
       return {
@@ -510,7 +536,7 @@ const REQUIRE_BASELINE = argv.includes("--require-baseline");
 
 async function buildCtx() {
   const currentRaw = fs.existsSync(INDEX) ? fs.readFileSync(INDEX, "utf8") : null;
-  const curPoems = currentRaw ? (() => { try { return JSON.parse(extractPoems(currentRaw)); } catch { return null; } })() : null;
+  const curPoems = currentRaw ? (() => { try { return JSON.parse(extractPoems(currentRaw, PROFILE.arrayMarker)); } catch { return null; } })() : null;
 
   // 基线优先级：
   //  1) MERGE_BASE_REF（推荐）——「本次合入前的真实 SHA」，取自 git show <ref>:index.html
@@ -524,14 +550,14 @@ async function buildCtx() {
       const g = await gitShow(ref);
       if (!g.ok) throw new Error(`git show ${ref} 失败: ${g.code} ${g.stderr.slice(0, 100)}`);
       baselineRaw = g.stdout;
-      baselinePoems = JSON.parse(extractPoems(baselineRaw));
+      baselinePoems = JSON.parse(extractPoems(baselineRaw, PROFILE.arrayMarker));
       baselineFrom = `git:${ref}`;
     } catch (e) {
       baselineStale = `MERGE_BASE_REF=${ref} 取不到（${String(e.message).slice(0, 80)}）`;
     }
   } else if (fs.existsSync(BASELINE)) {
     baselineRaw = fs.readFileSync(BASELINE, "utf8");
-    try { baselinePoems = JSON.parse(extractPoems(baselineRaw)); } catch { /* 基线可能不存在 POEMS */ }
+    try { baselinePoems = JSON.parse(extractPoems(baselineRaw, PROFILE.arrayMarker)); } catch { /* 基线可能不存在 POEMS */ }
     baselineFrom = "旧快照(可能失真)";
     baselineStale = "用的是工作区旧快照 index.baseline-before-merge.html，非本次合入前状态。"
       + " 判据会把历史 legit 改动算成越界 —— 请设 MERGE_BASE_REF=<合入前SHA> 复核。";
@@ -565,6 +591,8 @@ const report = {
   //   「我以为跑了 3 轮其实只跑了 2 轮」这类错，读数第一行就该暴露，不该回头查代码。
   effective: {
     repo: REPO,
+    profile_file: PROFILE_FILE,
+    profile: PROFILE,
     trials: TRIALS,
     remote_ref: REMOTE_REF,
     local_ref: LOCAL_REF,

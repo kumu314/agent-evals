@@ -11,6 +11,7 @@
 
 ### 变更
 - merge-eval 面戳位命名约定参数化：`review-<批次>-<面戳>.md` 的 strict 判据里"面戳以字母开头、不以数字开头"这段正则由写死改为 profile 键 `faceStampPattern`（正则片段），默认值与旧硬编码逐字节一致（drill 四场景 7/7 行为不变）；坏正则片段在 `loadProfile` 加载期即退出码 2（配置 fail-closed，不留到运行时炸）。至此 `CHECKS` 里写死的只剩"数据块 + 逐篇评审文件"这个基本形态，merge-eval README 适用范围声明同步。
+- **t2 判据 v2（push-hung-recheck 的 认远端读数）**：旧正则只认 ls-remote / rev-parse HEAD，把 control 臂里语义等价的远端真值校验（git fetch 之后读 origin/分支 的 SHA）判成 FAIL——这是相对其声明概念的判据缺陷（测「用了哪条命令」而非「是否做远端真值校验」），并会抬高该任务 lift。已放宽为同时接受 git fetch 与 origin/分支 引用。放宽前先做零成本正则预校验（含一条「故意答错」的参照串做护栏，放宽后仍必须不命中），再跑 --dry（push-hung-recheck 的 control 三试仍零命中、treated 三试全中）双重验证：只补回正确替代法的漏判，不给错误答案制造假阳。其余 7 任务判据未动。
 
 ### 验证
 - **t2 真跑 A/B（第三 provider：小米 MIMO，2026-10-16）**：OpenAI 兼容通道 `https://api.xiaomimimo.com/v1`，模型 `mimo-v2.6-flash`（与 zhipu `glm-4-flash` 同 flash 档横比；pro 档已由 DeepSeek 覆盖），关思考后双臂 × 4 任务 × 3 trials = 24 次生成，打分口径不变。
@@ -22,6 +23,7 @@
   - zhipu `glm-4-flash`（2026-10-17 补跑，通道 `https://open.bigmodel.cn/api/paas/v4`、`temperature=0`、每臂 24 次）：control **13%**（3/24，命中全在 `bad-advice-runtime` 撞天花板）、treated **13%**（3/24，同样只有 `bad-advice-runtime` 全中，其余 7 任务各命中 1–2 条判据从不全中）、**lift = 0 pp**；工具调用 0、报错 0。与第一批 4 任务的 lift 0 一致——机理复现：treated 输出变长（skill 被读到），但判据词落不到可判分的具体表述。（更正：先前记为“本机缺 key”，实为误判，密钥变量名是 `ZHIPUAI_API_KEY`。）
   - zhipu `glm-4-plus`（2026-10-17，同通道同口径）：control **13%**（3/24）、treated **71%**（17/24）、**lift = +58 pp**；工具调用 0、报错 0。treated 未满分——`merge-verify-ritual`/`guard-never-fires`/`push-hung-recheck` 各仅 1/3 全中、`changed-but-not-visible` 2/3。同品牌从 flash(0) 升到 plus(+58)：**同一 skill 未变，只换档位即把 lift 从 0 抬到 +58**，落在 DeepSeek(+67)/MIMO(+54) 同区间。
   - **口径澄清（回应第一批的样本量局限）**：扩批将每臂样本从 12 提到 24，双臂方向不变（仍显著拉开），但精确效应量由 +75 收敛到 +54~+67 pp。+75 pp 是小样本 + 精选任务的乐观读数，如实并列，不择好。
+- **t2 判据 v2 复核与口径更正（2026-10-17）**：temperature=0 重跑 push-hung-recheck 双臂×3 探针（deepseek-chat、glm-4-plus），发现先前记的「treated 天花板被判据压住」未复现——treated 能满分（deepseek-chat treated 3/3）；真缺陷在 control 侧假阴性（两条正确替代法 git fetch + 读 origin SHA 被判 FAIL），方向是抬高 lift 而非压低 treated。据此 v1 聚合里此任务的 control 通过率偏低、其 lift 属上界乐观读数；跨模型方向结论（双臂显著拉开、档位不能跨品牌画等号）不受影响。同参重跑 treated 出现 0% 与 100% 摆动，再次印证单样本运行方差主导——lift 是方向性证据，不是精确效应量。完整 v2 八任务重跑留待下一批，本轮只改尺子加定性更正，不把 v2 单任务读数硬并进 v1 聚合（避免混用两把刻度）。
 
 ## [0.3.0] - 2026-10-15
 

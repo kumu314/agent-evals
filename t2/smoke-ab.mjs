@@ -164,7 +164,7 @@ const TASKS = [
     ].join('\n'),
     checks: [
       { name: '中断不等于失败', re: /(卡[\s\S]{0,8}不一定[\s\S]{0,6}失败|中断[\s\S]{0,12}(不等|不代表|未必|不等于)[\s\S]{0,8}失败|超时[\s\S]{0,10}(不代表|未必|不等于|丢的是回执)|可能[\s\S]{0,8}(成功|完成|推上去了)|已经[\s\S]{0,8}(更新|完成))/ },
-      { name: '认远端读数', re: /(ls-remote|rev-parse[\s\S]{0,8}HEAD|远端[\s\S]{0,12}(sha|ref|读数|对比|比|指到))/ },
+      { name: '认远端读数', re: /(ls-remote|rev-parse[\s\S]{0,8}HEAD|远端[\s\S]{0,12}(sha|ref|读数|对比|比|指到)|git\s+fetch|origin\/)/ }, // v2 2026-10-17: also credit git fetch / origin/<br> (remote-tracking) — same remote-truth concept; old rule only credited ls-remote => false-negative on valid control answers
       { name: '不信自述', re: /(退出码|回执|up-to-date[\s\S]{0,24}(不携带|不足以|不能|本身|只是)|这句话[\s\S]{0,8}不)/ },
     ],
   },

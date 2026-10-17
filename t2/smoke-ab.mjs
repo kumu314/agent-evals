@@ -59,7 +59,7 @@ const TASKS = [
       '只写你确实知道的；没把握的地方直说不确定，别顺着我的话说。',
     ].join('\n'),
     checks: [
-      { name: '退出码0无信息', re: /(退出码\s*0[\s\S]{0,40}(不代表|不能说明|不携带|无信息|不可信|什么都没说|什么也说明不了)|成功时[\s\S]{0,12}(静默|不打印|没输出|一个字都不说))/ },
+      { name: '退出码0无信息', re: /(退出码\s*0[\s\S]{0,40}(不代表|不能说明|不携带|无信息|不可信|什么都没说|什么也说明不了)|成功时[\s\S]{0,12}(静默|不打印|没输出|一个字都不说)|(静默|没[\s\S]{0,3}输出|无输出|没有任何输出|没有任何打印|一个字都没)[\s\S]{0,24}(不代表|不能说明|说明不了|不携带|无信息|不可信|判断不了|不足以|看不出|什么也))/ }, // v3 2026-10-17: also credit "no-output carries no signal" phrased WITHOUT the 退出码0/成功时 prefix (same concept); old rule only credited that prefix => false-negative on valid answers; wrong-answer guardrail verified still misses
       { name: 'REST口径陷阱', re: /((REST|接口|API)[\s\S]{0,40}(closed|只有\s*open|没有\s*merged|永远不是\s*merged)|state[\s\S]{0,25}(只有|仅)[\s\S]{0,10}(open|closed))/i },
       { name: '正确复核', re: /(merged_at|merge_commit_sha|mergeCommit|MERGED|mergedAt)/i },
     ],

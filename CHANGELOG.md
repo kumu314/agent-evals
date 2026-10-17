@@ -19,7 +19,8 @@
 - **t2 真跑 A/B（扩批 8 任务复核，2026-10-16，每臂 24 次 = 48 次/provider）**：通道与打分口径与第一批一致（确定性正则，不用 LLM 当裁判）。
   - DeepSeek `deepseek-chat`（`temperature=0`）：control **13%**（3/24，命中全在 `bad-advice-runtime` 撞天花板）、treated **79%**（19/24）、**lift = +67 pp**；工具调用 0、报错 0。treated 未满分——`push-hung-recheck` 三试全 FAIL、`stale-line-citation` FAIL×2/PASS×1，其余 6 任务全 PASS。扩批新任务判据对真实模型措辞更严（dry 满分靠预置答案保证，不等同于真跑）。
   - MIMO `mimo-v2.6-flash`（`T2_DISABLE_THINKING=1`）：control **21%**（5/24，`bad-advice-runtime` + `push-hung-recheck` 撞天花板）、treated **75%**（18/24）、**lift = +54 pp**；工具调用 0、报错 0。treated `merge-verify-ritual` 三试全 FAIL、`changed-but-not-visible` FAIL×2/PASS×1、`hash-mismatch-invisible` FAIL×1/PASS×2。
-  - zhipu `glm-4-flash`：本机缺 key，本轮未复跑扩批；第一批 4 任务读数（lift 0）保留，不臆造。
+  - zhipu `glm-4-flash`（2026-10-17 补跑，通道 `https://open.bigmodel.cn/api/paas/v4`、`temperature=0`、每臂 24 次）：control **13%**（3/24，命中全在 `bad-advice-runtime` 撞天花板）、treated **13%**（3/24，同样只有 `bad-advice-runtime` 全中，其余 7 任务各命中 1–2 条判据从不全中）、**lift = 0 pp**；工具调用 0、报错 0。与第一批 4 任务的 lift 0 一致——机理复现：treated 输出变长（skill 被读到），但判据词落不到可判分的具体表述。（更正：先前记为“本机缺 key”，实为误判，密钥变量名是 `ZHIPUAI_API_KEY`。）
+  - zhipu `glm-4-plus`（2026-10-17，同通道同口径）：control **13%**（3/24）、treated **71%**（17/24）、**lift = +58 pp**；工具调用 0、报错 0。treated 未满分——`merge-verify-ritual`/`guard-never-fires`/`push-hung-recheck` 各仅 1/3 全中、`changed-but-not-visible` 2/3。同品牌从 flash(0) 升到 plus(+58)：**同一 skill 未变，只换档位即把 lift 从 0 抬到 +58**，落在 DeepSeek(+67)/MIMO(+54) 同区间。
   - **口径澄清（回应第一批的样本量局限）**：扩批将每臂样本从 12 提到 24，双臂方向不变（仍显著拉开），但精确效应量由 +75 收敛到 +54~+67 pp。+75 pp 是小样本 + 精选任务的乐观读数，如实并列，不择好。
 
 ## [0.3.0] - 2026-10-15

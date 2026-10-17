@@ -12,6 +12,7 @@
 ### 变更
 - merge-eval 面戳位命名约定参数化：`review-<批次>-<面戳>.md` 的 strict 判据里"面戳以字母开头、不以数字开头"这段正则由写死改为 profile 键 `faceStampPattern`（正则片段），默认值与旧硬编码逐字节一致（drill 四场景 7/7 行为不变）；坏正则片段在 `loadProfile` 加载期即退出码 2（配置 fail-closed，不留到运行时炸）。至此 `CHECKS` 里写死的只剩"数据块 + 逐篇评审文件"这个基本形态，merge-eval README 适用范围声明同步。
 - **t2 判据 v2（push-hung-recheck 的 认远端读数）**：旧正则只认 ls-remote / rev-parse HEAD，把 control 臂里语义等价的远端真值校验（git fetch 之后读 origin/分支 的 SHA）判成 FAIL——这是相对其声明概念的判据缺陷（测「用了哪条命令」而非「是否做远端真值校验」），并会抬高该任务 lift。已放宽为同时接受 git fetch 与 origin/分支 引用。放宽前先做零成本正则预校验（含一条「故意答错」的参照串做护栏，放宽后仍必须不命中），再跑 --dry（push-hung-recheck 的 control 三试仍零命中、treated 三试全中）双重验证：只补回正确替代法的漏判，不给错误答案制造假阳。其余 7 任务判据未动。
+- **t2 判据 v3（merge-verify-ritual 的 退出码0无信息）**：旧正则只认带 `退出码0`/`成功时` 前缀的措辞，把 control 臂里语义等价的"没输出本身就不携带信号"（不含该前缀）判成 FAIL——与 v2 同型的"测命令不测概念"缺陷，方向同样是压低 control、抬高该任务 lift。已按单调放宽（旧则与新则取"或"，只可能多判绿）补认这类无前缀同概念表达；放宽前用一条"故意答错"参照串（如"没输出是因为网络断了"）做护栏（放宽后仍必须不命中），再跑 `--dry` 复核（control 仍 0%、treated 仍 100%、lift 100，判别力未破）。其余判据未动。至此尺子锁定为 v2+v3。
 
 ### 验证
 - **t2 真跑 A/B（第三 provider：小米 MIMO，2026-10-16）**：OpenAI 兼容通道 `https://api.xiaomimimo.com/v1`，模型 `mimo-v2.6-flash`（与 zhipu `glm-4-flash` 同 flash 档横比；pro 档已由 DeepSeek 覆盖），关思考后双臂 × 4 任务 × 3 trials = 24 次生成，打分口径不变。
@@ -25,6 +26,7 @@
   - **口径澄清（回应第一批的样本量局限）**：扩批将每臂样本从 12 提到 24，双臂方向不变（仍显著拉开），但精确效应量由 +75 收敛到 +54~+67 pp。+75 pp 是小样本 + 精选任务的乐观读数，如实并列，不择好。
 - **t2 判据 v2 复核与口径更正（2026-10-17）**：temperature=0 重跑 push-hung-recheck 双臂×3 探针（deepseek-chat、glm-4-plus），发现先前记的「treated 天花板被判据压住」未复现——treated 能满分（deepseek-chat treated 3/3）；真缺陷在 control 侧假阴性（两条正确替代法 git fetch + 读 origin SHA 被判 FAIL），方向是抬高 lift 而非压低 treated。据此 v1 聚合里此任务的 control 通过率偏低、其 lift 属上界乐观读数；跨模型方向结论（双臂显著拉开、档位不能跨品牌画等号）不受影响。同参重跑 treated 出现 0% 与 100% 摆动，再次印证单样本运行方差主导——lift 是方向性证据，不是精确效应量。完整 v2 八任务重跑留待下一批，本轮只改尺子加定性更正，不把 v2 单任务读数硬并进 v1 聚合（避免混用两把刻度）。
 - **t2 v2 完整八任务重跑（2026-10-17，判据放宽后，两档代表，temperature=0、每臂 24 次）**：对整套 8 任务 × 3 trials × 2 臂做 v2 真跑，取代上一行"完整 v2 重跑留待下一批"的开放项。DeepSeek `deepseek-chat`：control **33%**（8/24）、treated **83%**（20/24）、**lift = +50 pp**（v1 同口径 13%/79%/+67——control 回升正是旧判据误杀的远端真值校验被补回，lift 由 +67 收敛到 +50，坐实 v1 该任务的"上界乐观"）；zhipu `glm-4-plus`：control **17%**（4/24）、treated **58%**（14/24）、**lift = +42 pp**（v1 13%/71%/+58，treated 回落属运行方差、非尺子改动）。跨档方向结论不变（双臂显著拉开、档位不能跨品牌画等号）。`push-hung-recheck` 的 control 三试在 v2 下均命中 认远端读数（旧判据下为零命中的假阴性），验证修复落地。MIMO `mimo-v2.6-flash` 与 glm-4-flash 的 v2 全量重跑待补，届时补齐 4/4 聚合。
+- **t2 v3 完整八任务重跑（2026-10-17，push-hung v2 + merge-verify v3 同一把尺子，四家 provider 全量，temperature=0、每臂 24 次、工具调用 0/报错 0）**：因 v3 又改了一次尺子，遵循"一把尺子整套重跑、不混两把刻度"，对四家全部用 v3 重跑，产出单一 4/4 聚合，取代上一行 v2 只跑两档的部分读数与其"待补"开放项。DeepSeek `deepseek-chat` control 29%（7/24）/treated 88%（21/24）/lift **+58**；zhipu `glm-4-plus` control 8%（2/24）/treated 67%（16/24）/lift **+58**；MIMO `mimo-v2.6-flash`（`T2_DISABLE_THINKING=1`）control 17%（4/24）/treated 79%（19/24）/lift **+63**；zhipu `glm-4-flash` control 13%（3/24）/treated 17%（4/24）/lift **+4**。三个强模型显著拉开（+58~+63），小档 glm-4-flash 几乎不涨属真实能力下限：其 treated 多数判据词出现、输出变长，但每任务总差一条未命中，而判分要求全部命中才 PASS；未为救该数字放宽尺子（改数字治标）。跨档/跨品牌方向结论不变。
 
 ## [0.3.0] - 2026-10-15
 

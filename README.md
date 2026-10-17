@@ -50,11 +50,20 @@ Expanded batch (8 tasks × 3 trials × 2 arms = 24 per arm, doubling the sample 
 
 Reading both batches together: **the direction holds** — the two arms still separate sharply; but **the precise effect size converges** (+75 → +54~+67 pp). The newer tasks' criteria sit closer to fine-grained points that are "unique to the skill body and unreachable by a bare model"; real-model wording does not necessarily hit every point (e.g. MIMO FAILs all three `merge-verify-ritual` treated trials; DeepSeek's `push-hung-recheck` criterion is tight), and a few control answers hit the ceiling (`push-hung-recheck` passes on two models even with a bare answer). +75 pp is an optimistic reading under a small sample plus curated tasks; +54~+67 pp is the more conservative estimate after expanding the sample — which is exactly the point that must be said: **lift is directional evidence, not a precise effect size.**
 
-Criterion calibration (v2, 2026-10-17): in the table above, `push-hung-recheck`'s "trust the remote read" check used to credit only `ls-remote`, which mis-judged a control arm that correctly verified remote truth via `git fetch` + reading the `origin/<branch>` SHA as FAIL, inflating that task's lift. The rule has been widened and passes both the guardrail and `--dry` verification. Full 8-task v2 re-runs (2 representative tiers, temperature=0):
-- **DeepSeek `deepseek-chat`**: control 33% (8/24), treated 83% (20/24), **lift +50 pp** (v1 under the same setup was 13%/79%/+67 — the control rate rebound is precisely the false-negative the old rule was killing; lift narrows from +67 to +50, confirming v1's "upper-bound optimism" for this task).
-- **zhipu `glm-4-plus`**: control 17% (4/24), treated 58% (14/24), **lift +42 pp** (v1 was 13%/71%/+58; the treated drop is run-to-run variance, not a change to the ruler).
+Criterion calibration (2026-10-17): two false-negative fixes, each a **monotonic relaxation** (can only turn more valid answers green, never a wrong one) verified against a deliberately-wrong guardrail string plus a `--dry` re-check:
+- **v2** — `push-hung-recheck`'s "trust the remote read" check credited only `ls-remote`, mis-judging a control arm that correctly verified remote truth via `git fetch` + reading the `origin/<branch>` SHA as FAIL.
+- **v3** — `merge-verify-ritual`'s "exit code 0 carries no information" check credited only answers phrased with the `退出码0/成功时` prefix, missing conceptually-correct phrasings like "no output carries no signal" stated without that prefix.
 
-The cross-tier direction is unchanged. MIMO `mimo-v2.6-flash` and glm-4-flash v2 full re-runs are still pending; the 4/4 aggregate will be filled in once they run.
+After both fixes the ruler is locked (v2 + v3). A single full 8-task re-run of **all four providers on this one ruler** (temperature=0, 24 calls/arm, 0 tool-calls / 0 errors throughout):
+
+| provider | model | control pass | treated pass | lift |
+|---|---|---|---|---|
+| DeepSeek | deepseek-chat | 29% (7/24) | 88% (21/24) | **+58 pp** |
+| zhipu | glm-4-plus | 8% (2/24) | 67% (16/24) | **+58 pp** |
+| MIMO | mimo-v2.6-flash | 17% (4/24) | 79% (19/24) | **+63 pp** |
+| zhipu | glm-4-flash | 13% (3/24) | 17% (4/24) | **+4 pp** |
+
+This 4/4 aggregate supersedes the earlier v2 partial readings (DeepSeek 33/83/+50, glm-4-plus 17/58/+42), which used the v2-only ruler and left MIMO / glm-4-flash pending. Three strong models land in **+58~+63 pp**; the small `glm-4-flash` barely moves (+4) — a real capability floor, not a ruler artifact: its treated answers lengthen and most criterion words appear, but it misses one required check per task and scoring demands **all** checks hit. Loosening the ruler to rescue flash's number would be "changing the number to treat the symptom" and is deliberately not done. **lift remains directional evidence, not a precise effect size.**
 
 Cross-brand comparison (first batch) still holds: same skill set, same criteria, same tasks — change only the model, and lift ranges from +75 (DeepSeek, MIMO) to 0 (zhipu). Mechanism (glm-4-flash): treated output is visibly longer (the skill is clearly being read and quoted), but the specific criterion words do not hit — an abstract rule cannot land on a scorable concrete phrasing. Yet mimo-v2.6-flash, also a flash tier, hits every one: **"tier" cannot be equated across brands** — selection must be tested down to the specific model, not just the tier name.
 

@@ -1,21 +1,23 @@
-# t2 — 技能增益 A/B（需要 API key）
+# t2 — Skill-gain A/B (needs an API key)
 
-回答一个问题：**加了某颗技能，模型的答案真的变好了吗，好多少？**
+English | [中文](README.zh-CN.md)
 
-做法是最朴素的对照实验。同一批任务跑两臂：
+Answers one question: **if I add a given skill, does the model's answer really get better — and by how much?**
 
-- `control`：只给任务，不给技能
-- `treated`：任务前注入技能正文
+The method is the plainest possible controlled experiment. Run the same set of tasks in two arms:
 
-两臂用同一套**确定性正则判据**打分（不请 LLM 当裁判，不付第二笔钱），比通过率与 lift。
+- `control`: give only the task, no skill
+- `treated`: inject the skill body before the task
 
-## 跑
+Both arms are scored by the same set of **deterministic regex criteria** (no LLM judge, no second bill), comparing pass rate and lift.
+
+## Run
 
 ```bash
-# 零调用自检：用预置答案证明判分管线有判别力（CI 也跑这个）
+# Zero-call self-check: use pre-set answers to prove the scoring pipeline has discriminative power (CI runs this too)
 node smoke-ab.mjs --dry
 
-# 真跑（任意 OpenAI 兼容端点）
+# Real run (any OpenAI-compatible endpoint)
 T2_BASE_URL=https://api.example.com/v1 \
 T2_API_KEY=sk-... \
 T2_MODEL=your-model \
@@ -23,35 +25,39 @@ T2_TRIALS=3 \
 node smoke-ab.mjs
 ```
 
-## 环境变量
+## Environment variables
 
-| 变量 | 作用 | 默认 |
+| var | purpose | default |
 |---|---|---|
-| `T2_BASE_URL` | OpenAI 兼容端点（结尾的 `/` 可有可无） | 必填 |
-| `T2_API_KEY` | 密钥 | 必填 |
-| `T2_MODEL` | 模型名 | 必填 |
-| `T2_DISABLE_THINKING` | 设 `1` 时随请求发官方参数 `thinking:{type:"disabled"}`。混合思考模型（实测：小米 `mimo-v2.6-flash`）默认开思考，真实任务单次可达 94s，会撞 `askOnce` 的 60s 超时；其他 provider 不带该参数，行为不变 | 关 |
-| `T2_TRIALS` | 每臂每任务跑几次 | `3` |
-| `T2_SKILL_ROOT` | 技能库根目录 | 本目录下 `skills/` |
-| `T2_TASK` | 只跑指定任务（逗号分隔 id） | 全部 |
+| `T2_BASE_URL` | OpenAI-compatible endpoint (trailing `/` optional) | required |
+| `T2_API_KEY` | API key | required |
+| `T2_MODEL` | model name | required |
+| `T2_DISABLE_THINKING` | when set to `1`, sends the official param `thinking:{type:"disabled"}` with the request. Hybrid thinking models (measured: Xiaomi `mimo-v2.6-flash`) default thinking on; a real task can take 94s and hit askOnce's 60s timeout. Other providers do not get this param, behavior unchanged | off |
+| `T2_TRIALS` | runs per arm per task | `3` |
+| `T2_SKILL_ROOT` | skill-library root | `skills/` under this dir |
+| `T2_TASK` | run only the listed tasks (comma-separated ids) | all |
 | `T2_ARM` | `control` / `treated` / `both` | `both` |
-| `T2_DUMP` | 设 `1` 时打印每条答案全文 | 关 |
+| `T2_DUMP` | when set to `1`, print each answer in full | off |
 
-## 判分口径（重要）
+## Scoring rules (important)
 
-- 每条任务带 1–3 条正则判据，**全部命中才算过**。
-- **工具调用与报错单列，不计入通过率。** 技能正文常会促成"先动手核实"的行为，模型可能返回工具调用而不是文字答案。把它算成"答错"会系统性低估技能，所以只对"拿到了文本答案"的调用算通过率。
-- 判据设计原则：落在"技能正文里有、裸模型答不到"的点上。否则两臂一起撞天花板，测不出增益。
-- 单次 A/B（每臂每任务 1 次）只能证明**管线有判别力**，不能下统计结论。要下"技能确实有用"的结论，n 得上去；先用 `--dry` 和便宜档模型把管线验通，再决定花不花这笔钱。
+- Each task carries 1–3 regex criteria; **a task passes only if all of them hit**.
+- **Tool calls and errors are listed separately and excluded from the pass rate.** A skill body often induces a "go verify first" behavior, so the model may return a tool call instead of a text answer. Counting that as "wrong" would systematically understate the skill, so the pass rate is computed only over calls that returned a text answer.
+- Criterion design principle: land on a point that "is in the skill body but a bare model cannot reach". Otherwise both arms hit the ceiling together and no gain is measurable.
+- A single A/B pass (1 run per arm per task) only proves **the pipeline has discriminative power**; it is not a statistical conclusion. To conclude "the skill really helps", raise n; first prove the pipeline with `--dry` and a cheap-tier model, then decide whether to spend the money.
 
-## 三颗被测技能
+## The eight tasks and seven skills under test
 
-`skills/` 下打包了三颗自研技能（MIT），各治一类"看起来对、其实错"的判断：
+The eight tasks below are hard-coded in `smoke-ab.mjs`, each bound to a skill (several tasks share one skill). They are the measurement objects; the seven self-authored skills under `skills/` (MIT) each cure a class of "looks right, is actually wrong" judgment:
 
-| 技能 | 治什么 |
-|---|---|
-| `runtime-resolution-and-abi` | "PATH 里那个 node 能用就行" —— 多版本运行时的定位与钉死 |
-| `silent-failure-triage` | "退出码 0 = 成功" —— 静默失败与假成功 |
-| `criterion-self-evidence-check` | "判据把目标自己写进了证据集" —— 同义反复的检查 |
+| skill | what it cures | task(s) |
+|---|---|---|
+| `runtime-resolution-and-abi` | "whichever node is on PATH is fine" — locating and pinning down multi-version runtimes | `bad-advice-runtime` |
+| `silent-failure-triage` | "exit code 0 = success" — silent failure and false success | `merge-verify-ritual`, `guard-never-fires` |
+| `criterion-self-evidence-check` | "the criterion writes the thing under test into its own evidence set" — tautological checks | `tautology-detector` |
+| `stale-output-layers` | "I changed it but the page is still old" — the change never reached the served layer (identity, not cache) | `changed-but-not-visible` |
+| `line-anchor-drift` | "the line number is a stable anchor" — line drift and content anchors | `stale-line-citation` |
+| `text-encoding-forensics` | "content looks identical yet the hashes differ" — invisible-byte forensics | `hash-mismatch-invisible` |
+| `git-push-fake-timeout` | "it hung / timed out, so it failed" — fake timeouts and re-checking remote ground truth | `push-hung-recheck` |
 
-它们同时也是被测对象：`smoke-ab.mjs` 的四条任务直接检查模型有没有答到这些技能里的关键点。
+`smoke-ab.mjs`'s eight tasks directly check whether the model reaches the key points of these skills.

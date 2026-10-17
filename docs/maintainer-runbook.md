@@ -1,74 +1,76 @@
-# 维护者接管指引（Maintainer Runbook）
+# Maintainer Runbook
 
-这份文档回答一个问题：**当作者不在场（换人、或作者自己隔了很久回来），你怎么安全地改这个仓库而不把它改坏。**
-单维护者项目的最大风险不是代码质量，是"隐性知识只在一个人脑子里"。下面把这些知识显式化。
+English | [中文](maintainer-runbook.zh-CN.md)
 
-## 0. 三十秒心智模型
+This document answers one question: **when the author is absent (a handover, or the author returning after a long gap), how do you change this repo safely without breaking it.**
+The biggest risk of a single-maintainer project is not code quality — it is "tacit knowledge living in one person's head". Below, that knowledge is made explicit.
 
-三个套件共享同一套判断口径（见 `docs/eval-primitives.md`）：
+## 0. A thirty-second mental model
 
-- **能确定性判定就别请 LLM 当裁判**——grader 全是正则 / md5 / 字节比对 / 退出码 / 远端 ref 真值。
-- **每条判据都要有"故意做错会报红"的负对照**（drill），否则你加的断言可能永远不红 = 同义反复。
-- **看到红先怀疑判据本身**，不要照着读数去查业务。
+The three suites share one set of judgment standards (see `docs/eval-primitives.md`):
 
-改任何东西前，先确保 `npm test`（= `node run-checks.mjs`）全绿——它是 CI 的本地等价物，零网络零 API。
+- **If it can be decided deterministically, do not bring in an LLM as judge** — the graders are all regex / md5 / byte comparison / exit code / remote-ref ground truth.
+- **Every criterion needs a negative control that "deliberately gets it wrong and goes red"** (a drill), otherwise an assertion you add may never go red = a tautology.
+- **When you see red, suspect the criterion first**; do not chase the business logic from the reading.
 
-## 1. 怎么跑（按成本从低到高）
+Before changing anything, make sure `npm test` (= `node run-checks.mjs`) is all green — it is the local equivalent of CI, zero network, zero API.
 
-| 命令 | 花钱 | 网络 | 作用 |
+## 1. How to run (cheapest first)
+
+| command | costs money | network | what it does |
 |---|---|---|---|
-| `npm test` | 否 | 否 | 一键复现 CI 全部确定性自检，任一失败即非零退出 |
-| `node demo/run.mjs` | 否 | 否 | 拿仓库自带样例库跑，先红后绿，看效果 |
-| `node t2/smoke-ab.mjs --dry` | 否 | 否 | 用预置答案证明判分管线能把好坏答案分开（lift=100） |
-| `node fleet-eval/fleet-eval.mjs --trials 2`（设 `FLEET_SHARED`） | 否 | 否 | 技能库全量回归 |
-| `node merge-eval/merge-eval.mjs --trials 2`（设 `MERGE_*`） | 否 | 视判据 | 批量合入逐字节不变回归 |
-| `node t2/smoke-ab.mjs`（设 `T2_*`） | **是** | 是 | 真跑双臂 A/B，只有这一步消耗 API |
+| `npm test` | no | no | one command reproduces every deterministic CI self-check; any failure exits non-zero |
+| `node demo/run.mjs` | no | no | runs against the repo's own sample library: first red, then green, to see it work |
+| `node t2/smoke-ab.mjs --dry` | no | no | uses pre-set answers to prove the scoring pipeline separates good from bad answers (lift=100) |
+| `node fleet-eval/fleet-eval.mjs --trials 2` (set `FLEET_SHARED`) | no | no | full skill-library regression |
+| `node merge-eval/merge-eval.mjs --trials 2` (set `MERGE_*`) | no | depends on criterion | batch-merge byte-for-byte-unchanged regression |
+| `node t2/smoke-ab.mjs` (set `T2_*`) | **yes** | yes | real two-arm A/B run; only this step consumes API |
 
-**默认全绿才算改对了。** 任何一步红，按第 4 节排查。
+**All-green by default is what "changed correctly" means.** If any step goes red, troubleshoot per section 4.
 
-## 2. 加一颗 t2 被测技能 + 任务
+## 2. Adding a t2 skill-under-test + task
 
-t2 的价值全在**判据设计**：判据必须落在"技能正文里有、裸模型答不到"的点上。
-否则两臂一起撞天花板（裸模型 control 也过），测不出增益。
+All of t2's value is in **criterion design**: the criterion must land on a point that "is in the skill body but a bare model cannot answer".
+Otherwise both arms hit the ceiling together (the bare-model control also passes), and no lift can be measured.
 
-1. 在 `t2/skills/<技能名>/SKILL.md` 写技能正文（frontmatter 带 `license: MIT`，去个人信息：不写具体机器路径、身份、私有技能名）。
-2. 在 `t2/smoke-ab.mjs` 的 `TASKS` 数组加一条任务：`id / skill / prompt / checks[]`，每个 check 是一条正则 `re`，**全部命中才判 PASS**。
-3. 在 `DRY_ANSWERS` 给这条任务补 `control`（一段"自信的错误直觉"答案，一条判据都不命中）和 `treated`（命中全部判据）两段预置答案。
-4. 跑 `node t2/smoke-ab.mjs --dry`：control 必须 0%、treated 必须 100%。**dry 不过 = 判据或预置答案错了，禁止进入真跑**（真跑花钱，先用免费的证明管线有判别力）。
-5. 只有 dry 绿了才真跑；真跑读数如实写进 `CHANGELOG.md` 的验证段，报错/工具调用按"单列不计入通过率"的口径记。
+1. Write the skill body at `t2/skills/<skill-name>/SKILL.md` (frontmatter with `license: MIT`, personal info removed: no specific machine paths, identity, or private skill names).
+2. Add a task to the `TASKS` array in `t2/smoke-ab.mjs`: `id / skill / prompt / checks[]`, where each check is a regex `re`; **all must hit to count as PASS**.
+3. In `DRY_ANSWERS`, add two pre-set answers for that task: `control` (a "confident wrong intuition" answer that hits none of the checks) and `treated` (hits every check).
+4. Run `node t2/smoke-ab.mjs --dry`: control must be 0%, treated must be 100%. **If dry fails = the criterion or the pre-set answers are wrong; do not proceed to a real run** (real runs cost money — first prove the pipeline discriminates, for free).
+5. Only after dry is green do a real run; write the real-run readings honestly into the verification section of `CHANGELOG.md`, recording errors/tool-calls per the "listed separately, not counted in pass rate" standard.
 
-正则转义提醒：判据是"能命中就行"的宽口径，别追求只命中正确答案——宁可稍宽，漏判由双臂对照兜。
+Regex-escaping reminder: criteria are "as long as it hits" broad standards — don't chase hitting only the correct answer; better slightly broad, with false negatives caught by the two-arm contrast.
 
-## 3. 加/改一条 fleet-eval 或 merge-eval 断言
+## 3. Adding/changing a fleet-eval or merge-eval assertion
 
-- 改 `CHECKS` 后**必须同时改对应的 drill**（`fleet-eval/drill-a1a2.mjs` 或 `merge-eval/drill-merge-eval.mjs`），
-  造一个"这条断言该红"的负例，跑出红，才算证明它真的会响。只加绿不加红的断言不收（见 `CONTRIBUTING.md` 约定）。
-- 配置一律走 profile / env，**fail-closed**：非法值在加载期 `process.exit(2)`，不留到运行时炸；缺配置要显式报"未配置"，不许静默回退成一个你以为不存在的默认值。
-- 布局耦合的判据（如 fleet 依赖 `sync.ps1` 扇出端点）要能被关闭而不报错——用 `FLEET_SCOPE=core` 只跑布局无关项。别人拿去用时配不上是预期的，别让整套件因此跑不起来。
+- After changing `CHECKS`, you **must also change the corresponding drill** (`fleet-eval/drill-a1a2.mjs` or `merge-eval/drill-merge-eval.mjs`),
+  construct a negative case where "this assertion should go red", run it red, and only then have you proven it really fires. Assertions that only add green and never red are not accepted (see the `CONTRIBUTING.md` conventions).
+- Configuration always goes through profile / env, **fail-closed**: illegal values `process.exit(2)` at load time rather than exploding at runtime; a missing config must explicitly report "unconfigured" and must not silently fall back to a default value you thought didn't exist.
+- Layout-coupled criteria (e.g. fleet depending on `sync.ps1` fan-out endpoints) must be able to be turned off without erroring — use `FLEET_SCOPE=core` to run only the layout-independent items. It is expected that others can't configure it when they take it; don't let the whole suite become unrunnable because of that.
 
-## 4. 红了怎么排查（先怀疑判据）
+## 4. When it goes red (suspect the criterion first)
 
-| 症状 | 最可能原因 | 动作 |
+| symptom | most likely cause | action |
 |---|---|---|
-| dry 臂没拉开（control≠0 或 treated≠100） | 判据太宽（control 也命中）或预置答案不符 | 收紧 control 让它命不中、或修 treated 让它全命中 |
-| drill 该红的没红 | 新断言恒真（同义反复） | 检查判据输入是否含被判定对象自己 |
-| fleet-eval 报 ABSENT 一大片 | 端点名单把注释行也读进去了 | 读名单前按行剥 `#` 注释 |
-| merge-eval 第一轮全红 | 判据写错方向（历史上真实发生过） | 先拿读数本身做实验，别去查业务 |
-| 真跑 treated 为空/报错 | 上游抖动或混合思考模型超时 | 见下：`T2_DISABLE_THINKING=1`；报错单列不混通过率 |
+| the dry arms don't separate (control≠0 or treated≠100) | criterion too broad (control also hits) or pre-set answers don't match | tighten control so it can't hit, or fix treated so it hits everything |
+| a drill that should go red doesn't | new assertion is tautological | check whether the criterion's input contains the judged object itself |
+| fleet-eval reports a swath of ABSENT | the endpoint list read in the comment lines too | strip `#` comments line by line before reading the list |
+| merge-eval is all red on the first round | criterion written in the wrong direction (has genuinely happened) | run an experiment on the reading itself first, don't chase the business |
+| real-run treated is empty/errors | upstream flakiness or a hybrid-thinking model timing out | see below: `T2_DISABLE_THINKING=1`; errors listed separately, not mixed into pass rate |
 
-## 5. 发版检查清单
+## 5. Release checklist
 
-1. `npm test` 全绿（selftest + T2 dry + demo + merge drill + fleet core）。
-2. 三平台 CI 绿（ubuntu / windows / macos，`shell: bash`）。
-3. `CHANGELOG.md` 的 `[Unreleased]` 固化成本版号，补 tag 链接。
-4. 判据语义有变动的，确认文档（各套件 README、`docs/eval-primitives.md`）同步——文档里的读数必须能在仓库脚本里当场复现，转述不算。
-5. 打 tag、推 main。
+1. `npm test` all green (selftest + T2 dry + demo + merge drill + fleet core).
+2. Three-platform CI green (ubuntu / windows / macos, `shell: bash`).
+3. Freeze `CHANGELOG.md`'s `[Unreleased]` into this version number, add the tag link.
+4. If criterion semantics changed, confirm the docs (each suite's README, `docs/eval-primitives.md`) are in sync — every reading in the docs must be reproducible on the spot with a script in the repo; hearsay does not count.
+5. Tag, push main.
 
-## 6. 环境依赖（踩过一次的坑）
+## 6. Environment dependencies (a pit hit once)
 
-- 需要 **Node ≥ 20.11**（用了 `import.meta.dirname` 与内置 `fetch`）；已写进 `package.json` 的 `engines` 与 `.nvmrc`。
-- fleet-eval 部分判据会调 Python（`FLEET_PYTHON` 或 PATH 里的 `python`）；缺 Python 时相关判据应按"无法判定"如实报，不是假装通过。
-- t2 真跑对 OpenAI 兼容端点通用；小米 MIMO 这类混合思考模型默认开思考会撞 60s 超时，需 `T2_DISABLE_THINKING=1`。
+- Requires **Node ≥ 20.11** (uses `import.meta.dirname` and built-in `fetch`); already written into `package.json`'s `engines` and `.nvmrc`.
+- Some fleet-eval criteria call Python (`FLEET_PYTHON` or `python` on PATH); when Python is missing the relevant criteria should honestly report "cannot determine", not pretend to pass.
+- t2's real run is generic across OpenAI-compatible endpoints; hybrid-thinking models like Xiaomi MIMO default to thinking on and will hit the 60s timeout, needing `T2_DISABLE_THINKING=1`.
 
 ---
-*这份 runbook 本身也应随套件演进更新。改判据/加套件结构时，回头核对这里的命令与文件是否还对得上。*
+*This runbook itself should evolve with the suites. When you change criteria or add suite structure, come back and check that the commands and files here still line up.*

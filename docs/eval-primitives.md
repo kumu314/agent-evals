@@ -1,109 +1,109 @@
-# 评测原语（Eval Primitives）
+# Eval Primitives
 
-从本仓库三套件（fleet-eval / merge-eval / t2）的真实事故与修复里提炼的五条可迁移原则。
-每条给：**主张 → 为什么（现场证据）→ 在代码里的落点（稳定锚，不用行号）→ 它挡住的失效**。
-读数都能用仓库里的脚本当场复现，不是转述。
+English | [中文](eval-primitives.zh-CN.md)
 
-适用对象：手里有「坏了就麻烦、又不想每次回归都花钱请模型打分」的资产的人——技能库、内容库、多端分发的配置。
+Five transferable principles distilled from the real incidents and fixes across this repo's three suites (fleet-eval / merge-eval / t2). Each gives: **claim → why (field evidence) → where it lives in code (a stable anchor, not a line number) → the failure mode it blocks.** Every reading can be reproduced on the spot with a script in the repo; it is not hearsay.
 
----
-
-## 原语一：能确定性判定，就不要请 LLM 当裁判
-
-**主张**：grader 优先用正则、md5、字节比对、退出码、远端 ref 真值；模型打分是最后手段，且要能被确定性判据复核。
-
-**为什么**：模型裁判既贵又不可复现——同一份答案两次打分可以不同，而 regression eval 的全部价值在于「掉了就是坏了」这个二值信号。三套件 22 项断言（fleet 11 + merge 7 + t2 判分管线自检）没有一项用模型打分，跑一次零 API 成本。
-
-**落点**：
-- `merge-eval.mjs` 的 `untouched.hash-zero-diff`：未触及篇逐篇 sha256 比对，越界 id 全列出来。
-- `fleet-eval.mjs` 的 `endpoints.skillmd-parity`：每端每颗 SKILL.md 的 md5 对源。
-- `reconcile.drift-zero`：`skills-reconcile.py` **恒返回退出码 0**，坏了也不报错——所以判去看的是解析出的汇总行数字（`differing 0 / unreadable 0`），不是 `$?`。接口 200 ≠ 资源存在，退出码 0 ≠ 事情做成，同一个坑的两种长相。
-
-**挡住的失效**：把评测成本押在调用费上导致「太贵所以不常跑」；以及裁判本身不可复现导致的判决漂移。
+Who it is for: anyone holding assets that are "annoying when they break, but you don't want to pay a model to score every regression" — skill libraries, content libraries, multi-endpoint distributed configs.
 
 ---
 
-## 原语二：每条判据都要有负对照，环境可信要靠阳性对照证明
+## Primitive 1: If it can be decided deterministically, do not bring in an LLM as judge
 
-**主张**：正向全绿不能证明判据有效——必须有一次「故意做错，看它真报红」的演练（负对照）；同时要有「已知正确的样本走同一通道应当绿」的对照臂（阳性对照），对照组不绿则环境不可信，本轮的红不算数。
+**Claim**: prefer regex, md5, byte comparison, exit code, and remote-ref ground truth for graders; a model score is the last resort and must itself be checkable by a deterministic criterion.
 
-**为什么**：一条永远不会红的判据测的是同义反复，不是事实。`anysearch.encoding-verdict` 带对照臂（见根 README 的判据表），防的就是「探针本身失效造成假绿」；`t2/smoke-ab.mjs --dry` 用预置答案把 control 臂全打 FAIL、treated 臂全打 PASS，`lift = 100 个百分点`，证明管线能把好坏答案分开——分开不了，后面所有的 A/B 数字都没有意义。
+**Why**: an LLM judge is both expensive and non-reproducible — the same answer can score differently twice, and the entire value of a regression eval lies in the binary signal "if it dropped, it's broken". None of the three suites' 22 assertions (fleet 11 + merge 7 + t2 scoring-pipeline self-check) uses a model score; one run costs zero API calls.
 
-**落点**：
-- `merge-eval/drill-merge-eval.mjs`：TMP 里 `git init` 一份 mini fixture，S1 阳性对照（local 五项该绿真绿）、S2 越界改动（`only-poems-touched` 该红真红）、S3 旧基线（三项 `metrics.stale` 真红）、S4 缺抽检报告（`missing=1` 且 `gate_verdict=BLOCK`）。零网络零 API，跑完自证活文件 md5 未变。
-- `fleet-eval/drill-a1a2.mjs`：A1 阳性对照臂——完好样本走同一条编码通道应当绿，`envTrusted` 为假时连守卫红都不采信。
+**Where it lives**:
+- `merge-eval.mjs` `untouched.hash-zero-diff`: sha256 comparison of every untouched entry, listing all out-of-bounds ids.
+- `fleet-eval.mjs` `endpoints.skillmd-parity`: md5 of each SKILL.md at each endpoint compared to the source.
+- `reconcile.drift-zero`: `skills-reconcile.py` **always returns exit code 0**, even when broken — so the judgment reads the parsed summary numbers (`differing 0 / unreadable 0`), not `$?`. HTTP 200 ≠ the resource exists; exit code 0 ≠ the thing got done — the same trap in two costumes.
 
-**挡住的失效**：判据写错方向、恒真守卫、以及「套件全绿其实是因为它什么都测不到」。
-
----
-
-## 原语三：面向「必须稳定」的资产判 pass^k，并把无效轮如实记账
-
-**主张**：红线资产（内容库逐字节不变、扇出一致性）要求 N 轮里**每轮都过**（pass^k），不是「至少过一次」（pass@k）。环境抖动产生的轮次要如实标注，不掺进通过率。
-
-**为什么**：pass@k 的语义是「蒙对一次就算」，恰好是红线资产最不能接受的。确定性任务里 pass^k == pass_rate（fleet 首跑 `pass^2 = 77.8%` 与 pass_rate 相同，符合预期）；k 的价值在有一定随机性的管线上才显现——所以 merge-eval 支持 `--trials N`，每 trial 重跑 local 判据。
-
-**落点**：
-- `remote-truth.read`（kind: **external**）每轮只查一次网络并把读数 memo 住，`remote-truth.stable` 每 trial 只比对 memo 值。**「再查一次」测的是网络；「比对 memo」测的是远端在测试期间是否一致**——后者才是想验的不变量。把网络抖动引进 pass^k，网抖一下就假红，是外部噪声被当成红线破防。
-- 网络不可用时 `read` 报红并标注「这是网络/环境问题，不是被测对象的问题」，`stable` 报「无法判定」——既不拿缺失当通过，也不假装通过。
-
-**挡住的失效**：用 pass@k 给红线资产发通行证；以及把外部世界的不稳定误算成被测对象的抖动。
+**Failure mode it blocks**: betting the eval's cost on call fees so it becomes "too expensive to run often"; and verdict drift caused by a non-reproducible judge.
 
 ---
 
-## 原语四：生效参数必须回显，缺配置要「说没配」而不是静默降级
+## Primitive 2: Every criterion needs a negative control; a trustworthy environment needs a positive control
 
-**主张**：读数第一行永远打印本轮实际生效的参数；可选配置缺失时，要么必填报错退出，要么显式标注「未配置/回落到了什么」，绝不静默用一个你以为不存在的值。
+**Claim**: all-green on the positive side does not prove a criterion works — there must be a drill that "deliberately gets it wrong and checks it really goes red" (negative control); and there must be a control arm where "a known-correct sample through the same channel should go green" (positive control). If the control arm isn't green, the environment is untrustworthy and this round's red does not count.
 
-**为什么**：「我以为跑了 3 轮其实只跑了 2 轮」这类配置静默降级，是第一轮调试里实际踩到的（`--trials 3` 解析后只跑 2）。参数生效与否不该靠回头读代码确认。
+**Why**: a criterion that can never go red is testing a tautology, not a fact. `anysearch.encoding-verdict` carries a control arm (see the criterion table in the root README), guarding against "a dead probe faking green"; `t2/smoke-ab.mjs --dry` uses pre-set answers to force the control arm all-FAIL and the treated arm all-PASS, `lift = 100 pp`, proving the pipeline separates good answers from bad — if it can't separate them, every A/B number afterward is meaningless.
 
-**落点**：
-- merge-eval 首行回显 `trials / remote / local / base / allow / released / require_baseline`；`MERGE_BASE_REF` 缺省回落旧快照时置 `baselineStale` 并**主动报红**——判据的输入本身要有时效闸，基线比被测对象还老，判据再对结论也是错的。
-- fleet-eval 的 `FLEET_SHARED` 缺失直接退出码 `2` 并打印一行提示（2026-10-12 起无默认值）；`MERGE_REPO_SLUG` 不配就明确报「未配置」而不是拼出畸形 URL。
-- 豁免白名单 `fleet-eval.allow.json`：没有这份文件 = 不豁免任何项（最严读法）；文件坏或不是字符串数组 = warn 写进 detail 且**不放行**——fail-closed，不能让一个坏掉的配置文件把垃圾静默洗白。
+**Where it lives**:
+- `merge-eval/drill-merge-eval.mjs`: `git init` a mini fixture in TMP — S1 positive control (the five local checks that should be green really are), S2 out-of-bounds edit (`only-poems-touched` should go red and does), S3 stale baseline (three `metrics.stale` really red), S4 missing review report (`missing=1` and `gate_verdict=BLOCK`). Zero network, zero API, and after running it self-proves the live file's md5 is unchanged.
+- `fleet-eval/drill-a1a2.mjs`: A1 positive-control arm — an intact sample through the same encoding channel should go green; when `envTrusted` is false, even the guard's red is not trusted.
 
-**挡住的失效**：默认值悄悄变了、旗标没传进去、闸门配置漂移——全部在第一行现形，不用考古。
-
----
-
-## 原语五：证据必须来自外部可复读物证，判据不许自证
-
-**主张**：每条 check 的证据要指向第三方能复读的东西——远端 API 读数、文件 sha256/blob sha、git ref 真值；禁止引用「我读完了 / 命令没报错 / 报告里写了 PASS」这类自述，更禁止判据的输入是评测器自己写的东西。
-
-**为什么**：判据自证 = 循环论证。首版 merge-eval 用本地 tracking ref 验「远端状态」——`git update-ref` 能把本地记录改成你以为的样子，之后所有判据自证通过，测的其实是自己的记忆。
-
-**落点**：
-- `remote-truth.read` 必须走 `git ls-remote` 或 GitHub API（真实网络查询），失败才降级；降级通路里 slug 经 argv 传入并做形态预检（`^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$`），不拼进内嵌脚本源码——物证通路本身不能留注入面。
-- `merge-gate.audit-per-batch` 对报告状态拆三种且不合并：`path@<blob-sha>`（已入库，不可变指向，放行）、`untracked`（存在但未提交 = 取不到不可变指向 = 物证不可复读，BLOCK）、`missing`（根本没生成，BLOCK）。「未入库」不是可接受的中间状态。
-- 端点名单**现读 `sync.ps1`**，绝不抄第二份文档——抄了就会静默过期（本机实测：端点从 5 变 4，文档还写着 5）。读之前按行剥 PowerShell `#` 注释：`sync.ps1` 里留着一行被注释掉的旧端点，不剥会凭空多出一端、240 条全报 ABSENT 的纯假红。`endpoints.match-authority` 就是为这类漂移设的交叉校验。
-
-**挡住的失效**：判据来源污染（自证循环）、物证时效（untracked 报告被事后修改也查不出）、名单/路径的二手抄写过期。
+**Failure mode it blocks**: a criterion written backwards, an always-true guard, and "the suite is all green only because it can't detect anything".
 
 ---
 
-## 附：看到红，先怀疑判据
+## Primitive 3: For "must be stable" assets, judge pass^k and account for invalid rounds honestly
 
-红有两种：**被测对象真破了**，和**判据自己错了**。本仓库的实际经历里，merge-eval 第一轮报的红**全部落在判据侧，没有一条是真破防**，形态同源：
+**Claim**: red-line assets (byte-for-byte content stability, fan-out consistency) require passing **every one of N rounds** (pass^k), not "passed at least once" (pass@k). Rounds caused by environment flakiness are annotated honestly and never blended into the pass rate.
 
-| 症状 | 先怀疑哪 |
+**Why**: pass@k means "get it right once and it counts" — exactly what a red-line asset can least tolerate. On deterministic tasks pass^k == pass_rate (fleet's first run had `pass^2 = 77.8%`, identical to pass_rate, as expected); k only earns its value on a pipeline with some randomness — so merge-eval supports `--trials N`, rerunning the local checks each trial.
+
+**Where it lives**:
+- `remote-truth.read` (kind: **external**) queries the network once per round and memoizes the reading; `remote-truth.stable` compares only the memoized value each trial. **"Query again" tests the network; "compare the memo" tests whether the remote stayed consistent during the test** — the latter is the invariant we actually want to verify. Feeding network flakiness into pass^k makes a single network hiccup a false red — external noise miscounted as a red-line breach.
+- When the network is unavailable, `read` reports red and labels it "this is a network/environment problem, not a problem with the thing under test"; `stable` reports "cannot determine" — neither treating a missing reading as a pass nor pretending it passed.
+
+**Failure mode it blocks**: giving red-line assets a pass@k hall pass; and miscounting the outside world's instability as flakiness of the thing under test.
+
+---
+
+## Primitive 4: Effective parameters must be echoed; a missing config must "say it's unset" rather than silently degrade
+
+**Claim**: the first line of any output always prints the parameters actually in effect this round; when an optional config is missing, either it's a required error-exit or it's explicitly labeled "unconfigured / fell back to X" — never silently using a value you thought didn't exist.
+
+**Why**: silent config degradation of the "I thought I ran 3 rounds but actually ran 2" kind was hit for real during the first debugging pass (`--trials 3` parsed down to 2). Whether a parameter took effect should not require reading the code afterward to confirm.
+
+**Where it lives**:
+- merge-eval echoes `trials / remote / local / base / allow / released / require_baseline` on its first line; when `MERGE_BASE_REF` is absent and falls back to an old snapshot it sets `baselineStale` and **proactively reports red** — the criterion's input itself needs a freshness gate; if the baseline is older than the thing under test, no matter how correct the criterion, the conclusion is wrong.
+- fleet-eval's `FLEET_SHARED` missing → exit code `2` with a one-line hint (no default since 2026-10-12); `MERGE_REPO_SLUG` unset → explicitly reports "unconfigured" instead of assembling a malformed URL.
+- The exemption allowlist `fleet-eval.allow.json`: no such file = exempt nothing (the strictest reading); a broken file or a non-string-array = warn into detail and **do not pass** — fail-closed, so a broken config file cannot silently launder junk.
+
+**Failure mode it blocks**: a default value changing quietly, a flag not being passed through, gate config drift — all revealed on line one, no archaeology required.
+
+---
+
+## Primitive 5: Evidence must come from externally re-readable artifacts; a criterion may not self-prove
+
+**Claim**: each check's evidence must point to something a third party can re-read — remote API readings, file sha256/blob sha, git ref ground truth; forbid citing self-reports like "I finished reading / the command didn't error / the report says PASS", and above all forbid a criterion whose input is something the evaluator itself wrote.
+
+**Why**: a self-proving criterion is circular reasoning. The first version of merge-eval verified "remote state" using the local tracking ref — `git update-ref` can rewrite the local record to whatever you believe, after which every criterion self-proves and passes, testing nothing but its own memory.
+
+**Where it lives**:
+- `remote-truth.read` must go through `git ls-remote` or the GitHub API (a real network query), degrading only on failure; in the degraded path the slug is passed via argv with a form precheck (`^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$`), never assembled into an embedded script's source — the evidence path itself must not leave an injection surface.
+- `merge-gate.audit-per-batch` splits report status into three kinds and does not merge them: `path@<blob-sha>` (committed, immutable pointer, pass), `untracked` (exists but uncommitted = no immutable pointer obtainable = evidence not re-readable, BLOCK), `missing` (never generated, BLOCK). "Uncommitted" is not an acceptable intermediate state.
+- The endpoint list is **read live from `sync.ps1`**, never copied from a second document — copy it and it silently goes stale (measured on this machine: endpoints went from 5 to 4 while the doc still said 5). Before reading, strip PowerShell `#` comments line by line: `sync.ps1` keeps a commented-out old endpoint, and not stripping it invents an extra endpoint and a pure false red where all 240 entries report ABSENT. `endpoints.match-authority` is the cross-check designed for exactly this kind of drift.
+
+**Failure mode it blocks**: contaminated criterion provenance (self-proving loops), evidence staleness (an untracked report modified after the fact goes undetected), and second-hand copying of stale name/path lists.
+
+---
+
+## Appendix: when you see red, suspect the criterion first
+
+Red comes in two kinds: **the thing under test really broke**, and **the criterion itself is wrong**. In this repo's actual experience, every red from merge-eval's first round **landed on the criterion side — none was a real breach**, all of one family:
+
+| symptom | suspect first |
 |---|---|
-| 读数与运行事实矛盾（以为 3 轮其实 2 轮） | 参数解析 / 配置是否真生效 |
-| 同一句话里字段自相矛盾（prefix=同 suffix=同 但「块有差异」） | 判据本身写错了 |
-| 判据的输入是「我自己写的东西」 | 判据在自证 |
-| 基线比被测对象老 | 判据输入过时 |
-| 命名/路径是猜的 | 撞上面戳这类真实变体 |
-| 未命中却记绿 | 缺项当通过 |
+| reading contradicts the run facts (thought 3 rounds, actually 2) | parameter parsing / whether config really took effect |
+| fields self-contradict in one line (prefix=same, suffix=same, yet "block differs") | the criterion itself is written wrong |
+| the criterion's input is "something I wrote myself" | the criterion is self-proving |
+| baseline older than the thing under test | criterion input is stale |
+| naming/paths are guessed | you'll hit a real variant like the face-stamp |
+| no hit yet recorded green | missing treated as pass |
 
-判据写错的最贵实例：`const POEMS = [...]` 整个数组写在 `<script>` 内，要求「POEMS 之外的纯逻辑/样式块全等」时把含 POEMS 的数据块也要求全等——这条判据永远不可能过，先红的是它自己。**照着读数去查业务之前，先拿读数本身做实验。**
+The most expensive instance of a wrong criterion: `const POEMS = [...]` has the whole array inside `<script>`, and requiring "all pure logic/style blocks outside POEMS to be exactly equal" also required the data block that *contains* POEMS to be equal — this criterion can never pass, and the first thing to go red is itself. **Before you chase the business logic from the reading, run an experiment on the reading itself.**
 
-## 附：决策语义只认一个态
+## Appendix: decision semantics recognize only one state
 
-读数上 INVALID / PARTIAL / ALL PASS 三态分开呈现；但喂给闸门时只认 `ALL PASS`——**测量失败与测量为负，在决策上都等于「不许过」**（`gate_rule` 原文）。把 INVALID 读成「没有反对意见」，正是「缺项当通过」这类失效在自家套件里的复发路径。
+The reading shows three states separately — INVALID / PARTIAL / ALL PASS; but when feeding the gate, only `ALL PASS` counts — **measurement failure and a negative measurement are, in the decision, both "not allowed to pass"** (the `gate_rule` verbatim). Reading INVALID as "no objection raised" is precisely the relapse path of the "missing treated as pass" failure inside our own suite.
 
-## 附：共用解析器要有单测
+## Appendix: the shared parsers need unit tests
 
-三套件的 `stripPsComments` / `parseFrontmatter` / `extractPoems` 收拢在 `lib/parsers.mjs`（唯一实现），`selftest.mjs` 用 node:test 钉住 18 个边界用例（CRLF 归一、>- 折行、串内 `]`、转义引号、未闭合数组判 null）。解析器是判据的地基：它错了，上面所有「确定性」都是错觉。
+The three suites' `stripPsComments` / `parseFrontmatter` / `extractPoems` are consolidated in `lib/parsers.mjs` (single implementation); `selftest.mjs` pins 18 boundary cases with node:test (CRLF normalization, `>-` folding, `]` inside strings, escaped quotes, unclosed-array → null). Parsers are the foundation under the criteria: get them wrong and every "deterministic" result above them is a mirage.
 
 ---
 
-*本文所有读数出处：`fleet-eval/README.md`、`merge-eval/README.md`、`CHANGELOG.md` 的实测记录，以及对应脚本本身（锚点为 check id 与函数名，不随重排失效）。*
+*Sources for every reading in this document: the empirical records in `fleet-eval/README.md`, `merge-eval/README.md`, and `CHANGELOG.md`, plus the scripts themselves (anchors are check ids and function names, which survive reordering).*

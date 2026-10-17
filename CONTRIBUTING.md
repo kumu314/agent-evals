@@ -1,19 +1,21 @@
-# 贡献方式
+# Contributing
 
-单维护者项目（作者本人 + 本机 agent 日常在用）。现阶段姿态，按对我最有帮助排序：
+English | [中文](CONTRIBUTING.zh-CN.md)
 
-## 收：issue 报告
+Single-maintainer project (used daily by the author and their local agents). What helps most, ranked:
 
-欢迎直接开 issue，尤其是这两类（仓库有对应模板）：
+## Welcome: issue reports
 
-- **判据误报 / 漏报**：本仓库的文化是"看到红先怀疑判据"——如果你被某条断言红牌误伤，或明知有问题却没红，这比新功能请求值钱得多。带上：套件与断言 id、你的环境变量（脱敏）、期望红/实际红（或相反）、复现命令输出。
-- **可移植性阻塞**：`fleet-eval` 默认值是作者本机事实（路径、豁免白名单），你在自己的机器上跑不通是预期内的——但"哪里卡住、怎么绕的"请写下来，这就是解耦需求的直接证据。
+Please open an issue directly — especially these two kinds (the repo has templates for both):
 
-## 暂缓：PR
+- **Criterion false-positive / false-negative**: this repo's culture is "when you see red, suspect the criterion first". If an assertion wrongly flagged you, or you know something is broken yet it stayed green, that is worth far more than a feature request. Include: the suite and assertion id, your environment variables (redacted), expected-red vs actual-red (or the reverse), and the reproduction command's output.
+- **Portability blocker**: fleet-eval's defaults are the author's own machine facts (paths, exemption allowlist); it is expected that they will not run out-of-the-box on your machine. But please write down where it got stuck and how you worked around it — that is direct evidence for a decoupling need.
 
-改动模型（`*.mjs`）的 PR 请先开 issue 讨论，达成一致再动手——这不是设门槛，是单人项目 review 带宽就是没有，未讨论过的 PR 大概率放着烂掉，对双方都是损耗。文档类错别字/死链修复可直接提，不需要先开 issue。
+## Deferred: PRs
 
-## 约定
+For PRs that change the model (`*.mjs`), open an issue to discuss first and reach agreement before coding. This is not a gate — a one-person project simply has no review bandwidth, and an un-discussed PR will most likely rot unmerged, a loss for both sides. Documentation fixes (typos, dead links) can be submitted directly without an issue.
 
-- 提交信息沿用现有风格：`套件/类型：一句话说清改了什么`（中文）。
-- 涉及判据语义的改动，必须同时改该套件的"反向验证"（fleet-eval 的 drill 或等价的负例），证明新断言真的会红——只加绿不加红的检查我们不要。
+## Conventions
+
+- Commit messages follow the existing style: `suite/type: one line saying what changed`. (Current history is in Chinese; an English line that is equally clear is fine too.)
+- Any change to criterion semantics must also update that suite's negative verification (fleet-eval's drill or an equivalent failing counter-example), proving the new assertion really goes red — we do not accept a check that can only go green.

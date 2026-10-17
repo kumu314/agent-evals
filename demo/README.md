@@ -1,18 +1,20 @@
-# demo — 30 秒看它红了 / 绿了
+# demo — see it go red / green in 30 seconds
 
-`fleet-eval` 默认要指到你自己的技能库才能跑。这个目录自带一份最小的样例技能库，**零配置**就能看它工作：
+English | [中文](README.zh-CN.md)
+
+`fleet-eval` normally has to point at your own skill library to run. This directory ships its own minimal sample skill library, so you can **see it work with zero configuration**:
 
 ```bash
 node demo/run.mjs
 ```
 
-它把同一批断言跑两遍：`fixture-broken/skills/` 故意留了 4 处缺陷，`fixture-clean/skills/` 是同一套技能、把缺陷改好。输出：
+It runs the same set of assertions twice: `fixture-broken/skills/` deliberately leaves 4 defects, `fixture-clean/skills/` is the same set of skills with the defects fixed. Output (the fenced block below is the tool's literal captured output — the banner is printed by the program):
 
 ```text
-同一个套件，先看它把坏掉的技能库抓出来，再看修好的全绿。
+The same suite: first see it catch a broken skill library, then see the fixed one go all green.
 
 ============================================================
- 1/2  fixture-broken（故意留了 4 处缺陷）—— 预期报红
+ 1/2  fixture-broken (deliberately leaves 4 defects) — expected to go red
 ============================================================
 
 fleet-eval — 本机 agent 资产舰队回归套件 (source: demo/fixture-broken/skills, 5 skills, 0 endpoints)
@@ -29,10 +31,10 @@ fleet-eval — 本机 agent 资产舰队回归套件 (source: demo/fixture-broke
 ------------------------------------------------------------------------------
 pass_rate = 20.0%  (1/5)
 
-=> 退出码 1（非 0 = 有失败项，CI 会据此把改动拦下）
+=> exit code 1 (non-zero = some item failed; CI uses this to block the change)
 
 ============================================================
- 2/2  fixture-clean（把上面 4 处改好）—— 预期全绿
+ 2/2  fixture-clean (the 4 above fixed) — expected all green
 ============================================================
 
 fleet-eval — 本机 agent 资产舰队回归套件 (source: demo/fixture-clean/skills, 5 skills, 0 endpoints)
@@ -45,22 +47,22 @@ fleet-eval — 本机 agent 资产舰队回归套件 (source: demo/fixture-clean
 ------------------------------------------------------------------------------
 pass_rate = 100.0%  (5/5)
 
-=> 退出码 0（0 = 全绿）
+=> exit code 0 (0 = all green)
 ```
 
-`--assert` 只校验不打印全文，CI 用它防止样例腐烂：
+`--assert` only verifies without printing the full text; CI uses it to keep the sample from rotting:
 
 ```bash
 node demo/run.mjs --assert
 ```
 
-## 两份 fixture 差在哪
+## What the two fixtures differ by
 
-| 位置 | fixture-broken | 撞上的检查项 |
+| location | fixture-broken | check it trips |
 |---|---|---|
-| `skills/gamma/SKILL.md` | `name: gamma-typo`（和目录名不一致） | `frontmatter.name-matches-dir` |
-| `skills/delta/SKILL.md` | 漏了 `description` | `frontmatter.valid` |
-| `skills/epsilon/SKILL.md` | `name: alpha`（和 alpha 撞车） | `frontmatter.name-unique`（也顺带踩到 name-matches-dir） |
-| `skills/beta/cache.bak` | 一个散落的备份文件 | `junk.absent` |
+| `skills/gamma/SKILL.md` | `name: gamma-typo` (inconsistent with the directory name) | `frontmatter.name-matches-dir` |
+| `skills/delta/SKILL.md` | missing `description` | `frontmatter.valid` |
+| `skills/epsilon/SKILL.md` | `name: alpha` (collides with alpha) | `frontmatter.name-unique` (also incidentally hits name-matches-dir) |
+| `skills/beta/cache.bak` | a stray backup file | `junk.absent` |
 
-demo 只跑这 5 项「与布局无关」的断言，这样它不依赖 `sync.ps1` 里的端点布局。完整的 11 项要指到真实的技能库，见 [../fleet-eval/README.md](../fleet-eval/README.md)。
+demo runs only these 5 "layout-independent" assertions, so it doesn't depend on the endpoint layout in `sync.ps1`. The full 11 require pointing at a real skill library; see [../fleet-eval/README.md](../fleet-eval/README.md).

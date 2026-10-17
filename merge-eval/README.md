@@ -1,139 +1,141 @@
-# merge-eval · 批量内容合入的确定性回归评测套件
+# merge-eval · a deterministic regression suite for batch content merges
 
-一个零依赖、零 API 成本的 **regression eval 套件**：把「批量内容合入」这件事的红线写成可机械判定的断言，每次合入后跑一遍，掉了就报。
+English | [中文](README.zh-CN.md)
 
-设计口径来自 2026-01Anthropic《Demystifying evals for AI agents》与 NVIDIA 的agent evaluation 实践：**能确定性就确定性、要稳定就报 pass^k、证据必须来自外部可复读物证。**
+A zero-dependency, zero-API-cost **regression eval suite**: it writes the red lines of "batch content merge" as mechanically decidable assertions, runs them once after each merge, and reports when something drops.
 
-> ⚠️ **适用范围（前置声明，务必先读）**：本套件的判据当前**绑定"内容站"形态的被测仓库**——即 `index.html` 里内嵌 `const POEMS = [...]` 数据块 + `review-*.md` 逐篇评审文件这套命名约定。"未触及条目逐字节不变""越界改动 BLOCK""缺报告 BLOCK"等红线都是据此成立的。仓库耦合面（入口文件名 / 数据数组名 / 报告目录 + 命名前缀 / 基线文件路径 / 远端本地 ref）已抽到 `merge-eval.profile.json`，默认值就是当前内容站的形态——换一个"内容站"仓库改这个 profile 即可复用，不需要动 `.mjs`；报告名的"面戳位"深度约定（默认：字母开头、不以数字开头）也已参数化为 `faceStampPattern`（正则片段，坏值加载期即退出码 2）；仍写死在 `CHECKS` 里的只剩数据块 + 逐篇评审文件这个基本形态——这不是通用即插即用的 eval，是**为这条内容量产线定制的回归闸**，profile 只是把外沿参数抽了出来。下面"★ 住在被测仓库之外"讲归属，这一条讲**耦合面**。
+The design standard comes from the 2026-01 Anthropic piece "Demystifying evals for AI agents" and NVIDIA's agent-evaluation practice: **be deterministic where you can, report pass^k when you need stability, and evidence must come from externally re-readable artifacts.**
 
-## ★ 本套件刻意住在被测仓库之外（`<此仓库路径>`）
+> ⚠️ **Scope (up-front declaration — read this first)**: this suite's criteria are currently **bound to a "content-site" shape of repo-under-test** — namely the `index.html` with an embedded `const POEMS = [...]` data block + `review-*.md` per-piece review files naming convention. Red lines like "untouched entries byte-for-byte unchanged", "out-of-bounds edit BLOCK", "missing report BLOCK" all hold on that basis. The repo-coupling surface (entry filename / data-array name / report directory + naming prefix / baseline file path / remote local ref) has been extracted into `merge-eval.profile.json`, whose defaults are exactly the current content-site shape — switch to another "content-site" repo by editing this profile, no need to touch the `.mjs`; the report name's "face-stamp position" depth convention (default: starts with a letter, not a digit) is also parameterized as `faceStampPattern` (a regex fragment; a bad value exits with code 2 at load time); what still remains hard-coded in `CHECKS` is only the base shape of the data block + per-piece review files — this is not a general plug-and-play eval, it is a **regression gate tailored to this content-production line**; the profile only pulls the outer-edge parameters out. The "★ lives outside the repo-under-test" section below covers ownership; this note covers the **coupling surface**.
 
-不放在被测仓库里，三条理由：
-1. **评测器与被测对象同源就等于没有独立评测** —— 住在一起，它就能被同一批改动顺手改掉。
-2. **评测基建的生命周期应长于它评测的对象** —— 仓库会clone/归档/换 CI，评测不该跟着断。
-3. **归属不同**：这是「我怎么干活」的质量工具，不是「这个仓库的产品」。
+## ★ This suite deliberately lives outside the repo-under-test (`<this-repo path>`)
 
-所以被测仓库路径用 `MERGE_REPO` 传入，不靠相对路径猜。
+Not placed inside the repo-under-test, for three reasons:
+1. **An evaluator that shares a source with the thing it tests is no independent evaluation at all** — living together, it can be casually changed by the same batch of edits.
+2. **Evaluation infrastructure's lifecycle should outlast what it evaluates** — repos get cloned/archived/CI-swapped; the eval shouldn't break along with them.
+3. **Different ownership**: this is a "how I work" quality tool, not "this repo's product".
 
-## 定位
+So the repo-under-test path is passed via `MERGE_REPO`, not guessed from a relative path.
 
-**regression eval**（通过率应接近 100%，掉了就是坏了），不是 capability eval（那种起步就该低）。
-每条红线都是"必须稳定"的资产 → 判 **`pass^k`**（N 次每次都过），不判 `pass@k`。
+## Positioning
 
-## 用法
+A **regression eval** (pass rate should be near 100%; a drop means something broke), not a capability eval (those should start low).
+Each red line is a "must be stable" asset → judge **`pass^k`** (pass every one of N runs), not `pass@k`.
+
+## Usage
 
 ```bash
-# 正向：指定被测仓库 + 本次合入前的真实 SHA + 本次触及的篇目清单
-MERGE_REPO="<被测仓库路径>" \
-MERGE_BASE_REF="<合入前SHA>" \
+# forward: specify repo-under-test + the real SHA before this merge + the list of pieces touched this time
+MERGE_REPO="<repo-under-test path>" \
+MERGE_BASE_REF="<pre-merge SHA>" \
 MERGE_TOUCHED_IDS='["id1","id2"]' \
 MERGE_RELEASED_BATCHES='["jingdu-batch-01"]' \
-node <此仓库路径>merge-eval.mjs --trials 2
+node <this-repo path>merge-eval.mjs --trials 2
 
-node merge-eval.mjs --json     # 只出 JSON
-node merge-eval.mjs --quiet    # 只出汇总行
+node merge-eval.mjs --json     # JSON only
+node merge-eval.mjs --quiet    # summary line only
 
-# 闸门模式：无基线 = FAIL（不放行空转）
+# gate mode: no baseline = FAIL (no idle pass allowed)
 node merge-eval/merge-eval.mjs --require-baseline --quiet
 ```
 
-读数**第一行永远回显生效参数**（`trials / remote / local / base / allow / released`）——
-「我以为跑了 3 轮其实只跑了 2 轮」这类配置静默降级，在第一行就现形，不用回头查代码。
+The reading's **first line always echoes the parameters actually in effect** (`trials / remote / local / base / allow / released`) —
+silent config degradations of the "I thought I ran 3 rounds but actually ran 2" kind show up on line one; no need to read code afterward.
 
-## 环境变量
+## Environment variables
 
-| 变量 | 作用 | 不给会怎样 |
+| variable | what it does | what happens if unset |
 |---|---|---|
-| `MERGE_REPO_SLUG` | 远端仓库 `owner/repo`（GitHub API 降级通路用）。**不配就发不出请求**，会明确报「未配置」而不是拼畸形 URL | 空 → 仅 ls-remote 可用时正常；ls-remote 失败时明确报未配置 |
-| `MERGE_REPO` | **被测仓库路径**（本套件住在仓库外，不再靠相对路径猜） | 回落到当前目录 `.`，且读数首行会显示实际用的是哪个 |
-| `MERGE_BASE_REF` | **权威基线**：`git show <SHA>:index.html`，即"合入前那一刻" | 回落到工作区旧快照，并**主动报红**（`baselineStale`）——旧快照可能是 merge-01 之前的，会把历史 legit 改动算成越界；闸门调用（带 `--require-baseline`）时缺基线直接判 FAIL |
-| `GH_CLI` | gh 可执行文件路径（API 兜底通路取 token 用） | 依次试 Windows 默认安装位 → PATH 里的 `gh`；全失败时把每个候选的失败原因原样带回，**不静默降级** |
-| `MERGE_TOUCHED_IDS` | 本次**允许**变化的篇目清单（JSON 数组） | 空 → 任何变化都算越界，`untouched` 必红 |
-| `MERGE_RELEASED_BATCHES` | 授权放行的批次（闸门判据用） | 空 → 闸门判据 PASS 但 detail 写"无批次可查"（**不假装查过**） |
+| `MERGE_REPO_SLUG` | remote repo `owner/repo` (used by the GitHub API fallback path). **Without it no request is sent**, and it explicitly reports "unconfigured" rather than assembling a malformed URL | empty → normal as long as ls-remote works; when ls-remote fails it explicitly reports unconfigured |
+| `MERGE_REPO` | **repo-under-test path** (this suite lives outside the repo, no longer guessing via a relative path) | falls back to the current directory `.`, and the reading's first line shows which one was actually used |
+| `MERGE_BASE_REF` | **authoritative baseline**: `git show <SHA>:index.html`, i.e. "the moment before the merge" | falls back to a stale workspace snapshot and **proactively reports red** (`baselineStale`) — a stale snapshot may predate merge-01, counting historical legit changes as out-of-bounds; in a gate call (with `--require-baseline`) a missing baseline is judged FAIL outright |
+| `GH_CLI` | gh executable path (for the API fallback path's token retrieval) | tries the Windows default install locations in order → `gh` on PATH; if all fail, brings back each candidate's failure reason verbatim, **no silent degradation** |
+| `MERGE_TOUCHED_IDS` | list of pieces **allowed** to change this time (JSON array) | empty → any change counts as out-of-bounds, `untouched` must go red |
+| `MERGE_RELEASED_BATCHES` | batches authorized to pass (used by the gate criterion) | empty → the gate criterion PASSes but detail writes "no batch to check" (**does not pretend to have checked**) |
 
-## 七条判据
+## Seven criteria
 
-| id | layer | kind | 判什么 |
+| id | layer | kind | what it judges |
 |---|---|---|---|
-| `scan.sanity` | harness | local | **防假绿第一条**：POEMS 可解析、条数 > 0、id 非空且唯一 |
-| `poems.count-and-order` | data | local | 970 首、id 序**逐位**不变（判序列相等，非集合相等） |
-| `untouched.hash-zero-diff` | data | local | 未触及篇逐篇 sha256 零变化，列出全部越界 id |
-| `only-poems-touched` | structure | local | POEMS 数组外文本逐字节相同；**排除含 POEMS 的数据块**后纯逻辑/样式块全等 |
-| `merge-gate.audit-per-batch` | process | local | 授权点名的每批都有抽检报告且含 PASS，缺一即停。**报告名锚定面戳位**（`review-<batch>.md` 或 `review-<batch>-<面戳>.md`，面戳**不以数字开头**）；读数给`path@<blob-sha>` |
-| `remote-truth.read` | fanout | **external** | 读远端真值（ls-remote，失败降级 GitHub API）并 **memo 住**，每轮只跑一次 |
-| `remote-truth.stable` | fanout | local | 每 trial 只比对 memo 值与本地 HEAD，**不再查网络** |
+| `scan.sanity` | harness | local | **anti-false-green first line**: POEMS parses, count > 0, ids non-empty and unique |
+| `poems.count-and-order` | data | local | 970 poems, id order unchanged **position by position** (judges sequence equality, not set equality) |
+| `untouched.hash-zero-diff` | data | local | untouched pieces have per-piece sha256 zero change, lists all out-of-bounds ids |
+| `only-poems-touched` | structure | local | text outside the POEMS array byte-for-byte identical; after **excluding the data block that contains POEMS**, all pure logic/style blocks equal |
+| `merge-gate.audit-per-batch` | process | local | each batch named by authorization has a spot-check report containing PASS, one missing stops all. **Report name anchored on the face-stamp position** (`review-<batch>.md` or `review-<batch>-<face-stamp>.md`, face-stamp **not starting with a digit**); reading gives `path@<blob-sha>` |
+| `remote-truth.read` | fanout | **external** | reads remote ground truth (ls-remote, degrading to GitHub API on failure) and **memoizes** it, queried once per round |
+| `remote-truth.stable` | fanout | local | each trial only compares the memoized value to local HEAD, **does not re-query the network** |
 
-### local vs external（pass^k 的语义分层）
+### local vs external (the semantic layering of pass^k)
 
-- **local**（判被测对象）：每 trial 跑，输入每次应相同 →以此证明幂等。
-- **external**（判外部世界）：每轮**只跑一次**，读数memo 供所有 trial 复用。
+- **local** (judges the object under test): runs each trial, input should be identical each time → thereby proving idempotence.
+- **external** (judges the outside world): runs **once per round**, the reading is memoized for all trials to reuse.
 
-为什么：`pass^k` 要验的是**被测对象**的稳定性。远端不会因为你问两次就变，重查 N 次只多花 N 倍时间、不增加信息；更危险的是**把网络抖动引进 pass^k** —— 网抖一下就假红，那是外部噪声被当成红线破防。
+Why: what `pass^k` verifies is the stability of the **object under test**. The remote doesn't change because you asked twice; re-querying N times only spends N× the time and adds no information; more dangerous is **bringing network flakiness into pass^k** — one network hiccup becomes a false red, i.e. external noise miscounted as a red-line breach.
 
->「再查一次」测的是**网络**；「比对 memo 值」测的是**远端在测试期间是否一致**。后者才是真不变量。
+> "Query again" tests the **network**; "compare the memo value" tests **whether the remote stayed consistent during the test**. The latter is the real invariant.
 
-**网络不可用时**：`remote-truth.read` 报红并标注「★ 这是网络/环境问题，不是被测对象的问题」，`stable` 报「无法判定」——**既不拿缺失当通过，也不假装通过**。
+**When the network is unavailable**: `remote-truth.read` reports red and labels it "★ this is a network/environment problem, not a problem with the object under test", `stable` reports "cannot determine" — **neither treating a missing reading as a pass nor pretending it passed**.
 
-## ⚠ 硬约束（都是踩过的坑，别改回去）
+## ⚠ Hard constraints (all pits already stepped in; don't change them back)
 
-1. **拉子进程一律走异步**。本机 Node 22.22.2 的 `spawnSync`/`execFileSync` 对**任意**可执行文件返回 `EBUSY`（与磁盘余量无关，2026-10-06 实测），异步 `spawn` 正常。写同步会**静默取不到基线**。
+1. **Always go async when spawning subprocesses.** On this machine Node 22.22.2's `spawnSync`/`execFileSync` returns `EBUSY` for **any** executable (unrelated to disk headroom, measured 2026-10-06); async `spawn` is fine. Writing it synchronously **silently fails to get the baseline**.
 
-2. **判据来源不能是"我自己写的东西"**。`remote-truth` 必须用 `git ls-remote` 或 GitHub API（真实网络查询），而不是本地 tracking ref——`git update-ref` 是"把本地记录改成你以为的样子"，记忆错了就把假账写进 ref，之后所有判据自证通过。
+2. **A criterion's source must not be "something I wrote myself".** `remote-truth` must use `git ls-remote` or the GitHub API (a real network query), not a local tracking ref — `git update-ref` is "rewrite the local record to whatever you believe"; get the memory wrong and you've written false accounts into the ref, after which every criterion self-proves and passes.
 
-3. **自相矛盾的读数 = 套件自身 bug 的信号，不是数据有问题**。首跑时 `only-poems-touched` 报「prefix=同 suffix=同 但块有差异」——因为 `const POEMS = [...]` 整个数组就写在 `<script>` 内，要求该块全等本身是错判据。**先怀疑判据，别照着读数去查业务。**
+3. **A self-contradicting reading is a signal of the suite's own bug, not of bad data.** On the first run `only-poems-touched` reported "prefix=same suffix=same yet the block differs" — because `const POEMS = [...]` has the whole array written inside `<script>`, requiring that block to be equal is itself a wrong criterion. **Suspect the criterion first; don't chase the business logic from the reading.**
 
-4. **判据的输入本身要有时效闸**。基线比被测对象还老，判据再对也会得出错结论：用旧快照时置 `baselineStale` 并**主动报红**，不静默给可能失真的 PASS。
+4. **The criterion's input itself needs a freshness gate.** If the baseline is older than the object under test, no matter how correct the criterion, the conclusion is wrong: when using a stale snapshot, set `baselineStale` and **proactively report red**, don't silently hand out a possibly-distorted PASS.
 
-## 套件自身失效分类（比加第 8 条 check 更值钱）
+## Classifying the suite's own failure modes (worth more than adding an 8th check)
 
-我这几轮报的红**全部落在判据侧，没有一条是真破防**。形态同源，归类如下——**看到症状先怀疑这里**：
+The reds I reported over these rounds **all landed on the criterion side — none was a real breach**. The shapes are of one family, classified below — **when you see a symptom, suspect these first**:
 
-| 症状 | 先怀疑哪 | 实例 |
+| symptom | suspect first | instance |
 |---|---|---|
-| **读数与运行事实矛盾** | 参数解析 / 配置是否真生效 | `--trials 3` 以为跑 3 其实跑 2 |
-| **同一句话里字段自相矛盾** | 判据本身写错了 | prefix=同suffix=同 但「块有差异」 |
-| **判据自证** | 判据来源是不是「我自己写的东西」 | 用本地 tracking ref 验远端 |
-| **判据输入过时** | 基线比被测对象老吗 | 用 merge-01 前的快照当基线 |
-| **命名/路径假设** | 猜的还是锚定的 | 写死 `review-<batch>.md` 撞上面戳 |
-| **缺项当通过** | 未命中 ≠ PASS | 未命中词表却记绿 |
+| **reading contradicts the run facts** | parameter parsing / whether config really took effect | `--trials 3` thought 3 rounds, actually 2 |
+| **fields self-contradict in one sentence** | the criterion itself is written wrong | prefix=same suffix=same yet "block differs" |
+| **criterion self-proves** | is the criterion's source "something I wrote myself" | verifying the remote with a local tracking ref |
+| **criterion input is stale** | is the baseline older than the object under test | using a pre-merge-01 snapshot as baseline |
+| **naming/path assumptions** | guessed or anchored | hard-coding `review-<batch>.md` and hitting the face-stamp |
+| **missing treated as pass** | a non-hit ≠ PASS | not hitting the word list yet recorded green |
 
-## ★ 决策语义：测量失败与测量为负，在决策上都等于「不许过」
+## ★ Decision semantics: measurement failure and a negative measurement are, in the decision, both "not allowed to pass"
 
-读数上 INVALID / PARTIAL / ALL PASS 三态分开；**但用于决策闸时，只认 `ALL PASS`**：
+The reading keeps INVALID / PARTIAL / ALL PASS as three separate states; **but when feeding the decision gate, only `ALL PASS` counts**:
 
 ```
 gate_verdict: PASS | BLOCK
-gate_rule: 测量失败与测量为负在决策上都等于不许过；INVALID/PARTIAL 一律 BLOCK，需人工接管并留痕。
+gate_rule: measurement failure and a negative measurement are, in the decision, both not-allowed-to-pass; INVALID/PARTIAL are uniformly BLOCK, requiring human takeover and an audit trail.
 ```
 
-为什么不能把 INVALID 读成「没有反对意见 / 信息不足随你」——那正是本 README 里「缺项当通过」那类失效在**自家套件里复发**。所以 `gate_verdict` 是机器可读字段，三种输出模式（人读/ `--quiet` / `--json`）都带，调用方不可能误读。
+Why INVALID must not be read as "no objection raised / insufficient info, do as you like" — that is precisely the "missing treated as pass" failure class in this README recurring **inside our own suite**. So `gate_verdict` is a machine-readable field, present in all three output modes (human / `--quiet` / `--json`), so callers cannot misread it.
 
-同理由，闸门判据对「报告状态」拆三种，不合并成中性标签：
+For the same reason, the gate criterion splits "report status" into three kinds and does not merge them into a neutral label:
 
-| 状态 | 含义 | 闸门 |
+| status | meaning | gate |
 |---|---|---|
-| `path@blobsha` | 物证可复读（已入库，有不可变指向） | 放行 |
-| `untracked` | 报告存在但未提交 ⇒ **取不到不可变指向 = 物证不可复读** | BLOCK |
-| `missing` | 报告根本没生成 | BLOCK |
+| `path@blobsha` | evidence re-readable (committed, has an immutable pointer) | pass |
+| `untracked` | report exists but is uncommitted ⇒ **no immutable pointer obtainable = evidence not re-readable** | BLOCK |
+| `missing` | report never generated | BLOCK |
 
-「未入库」不是可接受的中间状态。
+"Uncommitted" is not an acceptable intermediate state.
 
-## 元纪律
+## Meta-discipline
 
-每条 check 的证据必须来自**外部可复读的物证**（远端 API、文件 md5、ref 真值），禁止引用「我读完了 / 命令没报错」这类自述。
+Each check's evidence must come from an **externally re-readable artifact** (remote API, file md5, ref ground truth); self-reports like "I finished reading / the command didn't error" are forbidden.
 
-## 自检：反向验证
+## Self-check: reverse verification
 
-正向全绿不能证明判据有效。**必须跑一次反向**，确认它会红——已固化为脚本：
+All-green in the forward direction does not prove a criterion works. **You must run a reverse once** to confirm it goes red — already baked into a script:
 
 ```bash
 node merge-eval/drill-merge-eval.mjs
 ```
 
-它在 TMP 里 `git init` 一份 mini fixture（不碰任何活文件），跑四个场景：阳性对照（该绿的判据真绿）、越界改动（`only-poems-touched` 真红）、旧基线（stale 指标真红）、缺抽检报告（闸门 `missing=1` 且 BLOCK）。零网络、零 API、毫秒级，已挂进 CI。
+It `git init`s a mini fixture in TMP (touches no live file) and runs four scenarios: positive control (the criteria that should be green really are), out-of-bounds edit (`only-poems-touched` really goes red), stale baseline (the stale metric really goes red), missing spot-check report (gate `missing=1` and BLOCK). Zero network, zero API, millisecond-scale, already hung in CI.
 
-实测记录：
-- **首次真实用在他人交付上**（30 篇批量内容合入）
-  →以 `MERGE_BASE_REF=3708805`（合入前）为基线 → **7/7 ALL PASS**，`untouched` 差异 30 篇全在允许清单内（正好是该批 30 篇），
-  闸门读数 `out/review-jingdu-batch-01-pi.md@002c41621f5d`。
-- 反向（空允许清单）→ **FAIL: untouched.hash-zero-diff**（证明判据真的会红）
+Measured records:
+- **First real use on someone else's delivery** (a 30-piece batch content merge)
+  → using `MERGE_BASE_REF=3708805` (pre-merge) as baseline → **7/7 ALL PASS**, `untouched` differences: all 30 pieces within the allow list (exactly that batch of 30),
+  gate reading `out/review-jingdu-batch-01-pi.md@002c41621f5d`.
+- reverse (empty allow list) → **FAIL: untouched.hash-zero-diff** (proving the criterion really goes red)

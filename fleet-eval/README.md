@@ -1,145 +1,147 @@
-# agent-evals — 本机 Evals 落地方案
+# agent-evals — a local Evals rollout
 
-> **移植提示**：`FLEET_SHARED` **必填**，指向你自己的技能库根目录——没有默认值（2026-10-12 起作者本机路径已从代码里删除；不配则打印一行提示并退出码 `2`，不静默读别处）。
-> 它假定该目录下有 `skills/`、`sync.ps1`、`scripts/skills-reconcile.py`——即一套"共享技能库 + 多端扇出"的布局。
-> 若你的目录结构不同，`endpoints.*` / `reconcile.*`（fanout 层）与 `anysearch.encoding-verdict`（tooling 层）这 5 条会红——它们本来就绑定那套布局。
-> 想只跑与布局无关的 6 条（frontmatter / junk / suite 那几项），显式设 `FLEET_SCOPE=core`：套件会跳过那 5 条并**回显跳过了哪些**，其余照常跑。**默认 `full`（跑全部 11 条）一字不变**——不设这个开关、或 `sync.ps1` 缺失，都会照常报错，不会自动降级（那会把"你其实配错了路径"一起藏掉）。
+English | [中文](README.zh-CN.md)
 
-检索日 2026-10-06。方法论依据见 `research/`，项目面清单见 `research/project-landscape-2026-10-06.md`。
+> **Porting note**: `FLEET_SHARED` is **required**, pointing at your own skill-library root — there is no default (since 2026-10-12 the author's local paths were removed from the code; if unset it prints a one-line hint and exits with code `2`, rather than silently reading somewhere else).
+> It assumes that directory has `skills/`, `sync.ps1`, and `scripts/skills-reconcile.py` — a "shared skill library + multi-endpoint fan-out" layout.
+> If your directory structure differs, the 5 criteria `endpoints.*` / `reconcile.*` (fanout layer) and `anysearch.encoding-verdict` (tooling layer) will go red — they are bound to that layout by design.
+> To run only the 6 layout-independent criteria (the frontmatter / junk / suite ones), explicitly set `FLEET_SCOPE=core`: the suite will skip those 5 and **echo which ones it skipped**, running the rest normally. **The default `full` (all 11 criteria) is unchanged word for word** — not setting this switch, or a missing `sync.ps1`, still errors normally and does not auto-degrade (which would hide "you actually misconfigured the path").
 
-## 一句话
+Retrieval date 2026-10-06. Methodology references are in `research/`; the project landscape list is in `research/project-landscape-2026-10-06.md`.
 
-2026 的共识不是"选哪个框架"，而是**把 evals 当产品工程的基础设施养**：能确定性就确定性、outcome 高于 agent 的自述、面向"必须稳定"的对象用 `pass^k` 而不是 `pass@k`。
-本机无 GPU，故不走本地权重路线（lm-evaluation-harness / oumi / lighteval 本地模式全部排除），只走**确定性 + API 型**两层。
+## In one sentence
 
-## 分层（按"性价比 × 本机可行性"排）
+The 2026 consensus is not "which framework to pick" but **raising evals as product-engineering infrastructure**: be deterministic where you can be deterministic, prefer outcome over the agent's self-report, and use `pass^k` rather than `pass@k` for anything that "must be stable".
+This machine has no GPU, so the local-weights route is excluded (lm-evaluation-harness / oumi / lighteval local mode all ruled out); only the **deterministic + API-type** two layers are used.
 
-| 层 | 做什么 | 成本 | 状态 |
+## Layers (ranked by "value × local feasibility")
+
+| layer | what it does | cost | status |
 |---|---|---|---|
-| **T1 舰队回归套件** | 对 240 颗共享技能 + 4 个扇出端点做确定性断言 | 0 API 调用 | ✅ **已落地并跑通**（`fleet-eval/fleet-eval.mjs`） |
-| **T2 技能 lift A/B** | 用 promptfoo + codex-sdk 量"加了某颗技能，答案变好了多少" | 有 API 成本 | 设施已装齐（`promptfooconfig.yaml`） |
-| **T3 可选补强** | Inspect AI（UK AISI）/ Langfuse 自托管 / 腾讯 AI-Infra-Guard 的 Skills·MCP Scan | 视情况 | 未装，按需 |
+| **T1 fleet regression suite** | deterministic assertions over 240 shared skills + 4 fan-out endpoints | 0 API calls | ✅ **landed and running** (`fleet-eval/fleet-eval.mjs`) |
+| **T2 skill lift A/B** | measure "with a given skill, how much better did the answer get" | API cost | infrastructure installed (`promptfooconfig.yaml`) |
+| **T3 optional add-ons** | Inspect AI (UK AISI) / self-hosted Langfuse / Tencent AI-Infra-Guard's Skills·MCP Scan | situational | not installed, on demand |
 
-## T1 怎么跑
+## How to run T1
 
 ```powershell
-node fleet-eval.mjs                 # 1 轮
-node fleet-eval.mjs --trials 3      # 3 轮，额外报 pass^3
-node fleet-eval.mjs --json          # 只出 JSON
+node fleet-eval.mjs                 # 1 round
+node fleet-eval.mjs --trials 3      # 3 rounds, additionally reports pass^3
+node fleet-eval.mjs --json          # JSON only
 ```
 
-### 环境变量
+### Environment variables
 
-| 变量 | 作用 | 不给会怎样 |
+| variable | what it does | what happens if unset |
 |---|---|---|
-| `FLEET_SHARED` | **必填**。共享技能库根目录（含 `sync.ps1` / `skills/` / `scripts/` 的那一级） | 打印一行提示，退出码 `2` |
-| `FLEET_PYTHON` | python 可执行文件路径（`reconcile.*` 用） | 回落 PATH 里的 `python` |
-| `FLEET_ALLOW_FILE` | `junk.absent` 豁免白名单 JSON 路径 | 读本目录 `fleet-eval.allow.json`；没有 = 不豁免任何项 |
-| `FLEET_SCOPE` | 作用域：`full`（默认，跑全部 11 项）/ `core`（只跑与"共享库 + 扇出端点"布局无关的 6 项，显式跳过 fanout + tooling 那 5 项并回显跳过了哪些） | 缺省 `full`；非法值退出码 `2`（不静默当默认）。外部技能库缺 `sync.ps1` 时**用它显式声明，而不是让套件自动降级** |
-| `FLEET_ANYSEARCH` | `drill-a1a2.mjs` 里 anysearch.py 的路径 | 从 `FLEET_SHARED` 推导；两者皆无退出码 `2` |
+| `FLEET_SHARED` | **required**. shared skill-library root (the level containing `sync.ps1` / `skills/` / `scripts/`) | prints a one-line hint, exits code `2` |
+| `FLEET_PYTHON` | python executable path (used by `reconcile.*`) | falls back to `python` on PATH |
+| `FLEET_ALLOW_FILE` | `junk.absent` exemption allowlist JSON path | reads `fleet-eval.allow.json` in this dir; no file = exempt nothing |
+| `FLEET_SCOPE` | scope: `full` (default, all 11 items) / `core` (only the 6 items independent of the "shared library + fan-out endpoints" layout, explicitly skipping the 5 fanout + tooling items and echoing which were skipped) | defaults to `full`; illegal value exits code `2` (not silently treated as default). When an external skill library lacks `sync.ps1`, **declare it explicitly with this, rather than letting the suite auto-degrade** |
+| `FLEET_ANYSEARCH` | path to anysearch.py in `drill-a1a2.mjs` | derived from `FLEET_SHARED`; if both absent, exit code `2` |
 
-- 退出码 `0` = 全绿；`1` = 有条目失败（每个失败项在 JSON 里带 `detail`）。
-- 报告落盘 `out/fleet-eval-YYYY-MM-DD.json`。
+- Exit code `0` = all green; `1` = at least one item failed (each failing item carries a `detail` in the JSON).
+- The report lands at `out/fleet-eval-YYYY-MM-DD.json`.
 
-### 它检查什么（11 个 task，全确定性 grader）
+### What it checks (11 tasks, all deterministic graders)
 
-| id | 层 | 断言 |
+| id | layer | assertion |
 |---|---|---|
-| `scan.sanity` | harness | 源目录存在且非空（防"扫到 0 条也算全绿"） |
-| `frontmatter.valid` | structure | 每份 SKILL.md 都能解析出非空 `name` / `description` |
-| `frontmatter.name-matches-dir` | structure | `name` == 目录名 |
-| `frontmatter.name-unique` | routing | `name` 在源树内唯一 |
-| `junk.absent` | hygiene | 无 `.git`/`node_modules`/`__pycache__`/`*.bak*`；豁免按**精确路径**走配置文件 `fleet-eval.allow.json`（模板 `fleet-eval.allow.example.json`，`FLEET_ALLOW_FILE` 可覆盖路径）：没有这份文件 = 不豁免任何项；文件坏/不是字符串数组 = warn 写进 detail 且不放行（fail-closed，防把垃圾静默洗白） |
-| `endpoints.present` | fanout | 声明的端点目录都存在 |
-| `endpoints.match-authority` | fanout | 本套件现读 `sync.ps1` 的端点名单 == `skills-reconcile.py --targets` 的输出 |
-| `endpoints.skillmd-parity` | fanout | 每端每颗技能 SKILL.md 的 md5 == 源（尊重 `$hideFrom`） |
-| `reconcile.drift-zero` | fanout | 全库对账 `differing 0` / `unreadable 0` |
-| `anysearch.encoding-verdict` | tooling | 某工具脚本的 UTF-8 守卫真的生效（**含对照臂**，防"探针本身失效"造成假绿） |
-| `suite.determinism-contract` | suite | 套件自审：注册表良构 + 源内 id 与注册表一一对应 + 任一 task 体内无网络访问 |
+| `scan.sanity` | harness | source dir exists and is non-empty (guards against "scanning 0 entries still counts as all green") |
+| `frontmatter.valid` | structure | every SKILL.md parses to a non-empty `name` / `description` |
+| `frontmatter.name-matches-dir` | structure | `name` == directory name |
+| `frontmatter.name-unique` | routing | `name` is unique within the source tree |
+| `junk.absent` | hygiene | no `.git`/`node_modules`/`__pycache__`/`*.bak*`; exemptions go by **exact path** through the config file `fleet-eval.allow.json` (template `fleet-eval.allow.example.json`, path overridable via `FLEET_ALLOW_FILE`): no such file = exempt nothing; broken file or non-string-array = warn into detail and **do not pass** (fail-closed, so a broken config can't silently launder junk) |
+| `endpoints.present` | fanout | the declared endpoint directories all exist |
+| `endpoints.match-authority` | fanout | this suite's live-read `sync.ps1` endpoint list == the output of `skills-reconcile.py --targets` |
+| `endpoints.skillmd-parity` | fanout | each endpoint's each skill's SKILL.md md5 == source (honors `$hideFrom`) |
+| `reconcile.drift-zero` | fanout | whole-library reconcile `differing 0` / `unreadable 0` |
+| `anysearch.encoding-verdict` | tooling | a tool script's UTF-8 guard really fires (**includes a control arm**, guarding against "the probe itself failed" causing a false green) |
+| `suite.determinism-contract` | suite | the suite self-audits: registry well-formed + source ids map one-to-one to the registry + no network access inside any task body |
 
-### 三条必须知道的纪律
+### Three disciplines you must know
 
-1. **端点名单现读 `sync.ps1`，绝不抄第二份。** 而且读之前必须按行剥掉 PowerShell `#` 注释——`sync.ps1` 里留着一行被注释掉的旧端点。实测不剥注释会凭空多出一端，240 条全报 ABSENT（纯假红）。`endpoints.match-authority` 就是为此设的交叉校验。
-2. **`skills-reconcile.py` 恒返回退出码 0。** 它把读数印在汇总行里，坏了也不报错。所以 `reconcile.drift-zero` 是**解析汇总行的数字**判定的，不看 `$?`。
-3. **只在舰队静止时读读数。** 扇出进行中跑本套件会红，而且与真漂移**外观完全一样**（都退 1、都报 `pass_rate 77.8% (7/9)`）。2026-10-06 演练实测：13:12–13:18 有人跑 `sync.ps1`（`$targets` 顺序 端点A → 端点B → 端点C → 端点D，每端约 90s），我在 13:15 读到 7/9、13:19 读到 9/9、13:21 又读到 7/9（这次是真漂移：源已改、端点未扇出）——三处红都不是套件出错，但只有最后一处需要人管。判据两条：① 有没有 `sync.ps1` / `powershell` 在跑；② 端点技能目录的创建时间是否在最近几分钟内呈阶梯状刷新（实测：端点A 13:12:56 → 端点B 13:14:16 → 端点C 13:16:36 → 端点D 13:18:06）。落在 2c 里没问题——它紧接 `sync.ps1` 之后跑，天然静止；**人临时手跑必须先确认静止**。
+1. **The endpoint list is read live from `sync.ps1`, never copied from a second document.** And before reading it, PowerShell `#` comments must be stripped line by line — `sync.ps1` keeps a commented-out old endpoint. Measured: not stripping comments invents an extra endpoint and all 240 entries report ABSENT (a pure false red). `endpoints.match-authority` is the cross-check built for exactly this.
+2. **`skills-reconcile.py` always returns exit code 0.** It prints the reading in a summary line and does not error even when broken. So `reconcile.drift-zero` decides by **parsing the summary line's numbers**, not `$?`.
+3. **Only read the readings when the fleet is at rest.** Running this suite mid fan-out goes red, and looks **exactly like** real drift (both exit 1, both report `pass_rate 77.8% (7/9)`). 2026-10-06 drill measured: 13:12–13:18 someone ran `sync.ps1` (`$targets` order endpointA → endpointB → endpointC → endpointD, ~90s per endpoint); I read 7/9 at 13:15, 9/9 at 13:19, and 7/9 again at 13:21 (this time real drift: source changed, endpoint not yet fanned out) — none of the three reds was a suite fault, but only the last one needed human action. Two judgment rules: ① is any `sync.ps1` / `powershell` running; ② are the endpoint skill directories' creation times being refreshed in a staircase pattern within the last few minutes (measured: endpointA 13:12:56 → endpointB 13:14:16 → endpointC 13:16:36 → endpointD 13:18:06). It's fine inside step 2c — it runs right after `sync.ps1`, naturally at rest; **a human running it ad hoc must first confirm it's at rest**.
 
-## 已接入既有定时任务（2026-10-06）
+## Already wired into the existing scheduled task (2026-10-06)
 
-T1 已挂进 `<SHARED>\scripts\skills-update-scheduled.ps1` 的 **2c 步**，位于 2b 对账之后、黑板登记之前。这一轮的顺序是：
-`npx skills update` → `sync.ps1` 扇出 → `skills-reconcile.py` 对账 → **`fleet-eval.mjs` 回归套件** → 黑板登记。
+T1 is hung on **step 2c** of `<SHARED>\scripts\skills-update-scheduled.ps1`, after the 2b reconcile and before the blackboard registration. This round's order is:
+`npx skills update` → `sync.ps1` fan-out → `skills-reconcile.py` reconcile → **`fleet-eval.mjs` regression suite** → blackboard registration.
 
-> **频率 = 每天 09:00（2026-10-06 已改，本轮现读确认）。**
-> 先前这里断言过"实际是每周一，本机文档里的'每天'是错的"——那条依据是当时 `schtasks /query /tn <任务名> /xml` 读到 `CalendarTrigger` + `ScheduleByWeek`（`WeeksInterval=1`、`DaysOfWeek=Monday`、Next Run `2026-10-12 09:00`）。
-> 该断言**已作废**：2026-10-06 按用户确认把触发器改成 `<ScheduleByDay><DaysInterval>1</DaysInterval>`（改前 XML 备份在 `out/<任务名>.trigger-backup.xml`）。
-> 现读证据（2026-10-06 12:5x）：`Schedule Type: Daily`、`Days: Every 1 day(s)`、`Next Run Time: 2026/10/7 9:00:00`、`StartBoundary 2026-10-06T09:00:00+08:00` + `<ScheduleByDay><DaysInterval>1</DaysInterval>`。
-> 于是 `sync.ps1` 头部注释第 9 行的"每天 09:00"从此为**正确**，另一颗定时任务技能的 `SKILL.md` 里的两处 `（每周一 09:00）` / `— 每周一 09:00，` 也已同步改成"每天 09:00"。
-> 影响：漂移最坏**当天**就能被扫到（改前是 7 天）。
+> **Frequency = daily 09:00 (changed 2026-10-06, confirmed by this round's live read).**
+> Earlier this document asserted "it's actually weekly; the local docs' 'daily' is wrong" — that basis was reading `CalendarTrigger` + `ScheduleByWeek` (`WeeksInterval=1`, `DaysOfWeek=Monday`, Next Run `2026-10-12 09:00`) from `schtasks /query /tn <task-name> /xml` at the time.
+> That assertion is **void**: on 2026-10-06, per user confirmation, the trigger was changed to `<ScheduleByDay><DaysInterval>1</DaysInterval>` (pre-change XML backed up at `out/<task-name>.trigger-backup.xml`).
+> Live evidence (2026-10-06 12:5x): `Schedule Type: Daily`, `Days: Every 1 day(s)`, `Next Run Time: 2026/10/7 9:00:00`, `StartBoundary 2026-10-06T09:00:00+08:00` + `<ScheduleByDay><DaysInterval>1</DaysInterval>`.
+> So line 9 of `sync.ps1`'s header comment "daily 09:00" is now **correct**, and the two occurrences of `（每周一 09:00）` / `— 每周一 09:00，` in another scheduled-task skill's `SKILL.md` were also synced to "daily 09:00".
+> Impact: drift is caught **the same day** at worst (was 7 days before).
 
-为什么要在 2b 之后再补 2c：2b 只看得到**文件内容漂移**，看不见结构/卫生/路由类缺陷——2c 首跑就抓到 3 处 `frontmatter name ≠ 目录名` 和 11 个源树残留，这些 2b 全报 0 漂移。
+Why add 2c after 2b: 2b only sees **file-content drift**, not structure/hygiene/routing-class defects — 2c's first run caught 3 cases of `frontmatter name ≠ directory name` and 11 source-tree leftovers, all of which 2b reported as 0 drift.
 
-日志落 `<SHARED>\logs\<任务名>.LOG.md`：
-- 全绿 → `| 时间 | fleet-eval 全绿: pass_rate = ... | ✅ |`
-- 有失败 → `| 时间 | fleet-eval 未过 2/9 项: xxx {...} ; yyy {...} | ⚠️ |`，并把这句带进黑板 note。
+Logs land at `<SHARED>\logs\<task-name>.LOG.md`:
+- all green → `| time | fleet-eval all green: pass_rate = ... | ✅ |`
+- some failed → `| time | fleet-eval failed 2/9 items: xxx {...} ; yyy {...} | ⚠️ |`, and this line is carried into the blackboard note.
 
-原脚本的 `Add-Log` 把状态硬编码成 ✅，失败也会记成全绿；已拆成 `Add-LogStatus($line,$status)` + `Add-Log` 薄封装，并对 `|` 做转义（否则撑破 markdown 表）。
+The original script's `Add-Log` hard-coded the status to ✅, so failures were also logged as all green; it was split into `Add-LogStatus($line,$status)` + a thin `Add-Log` wrapper, and `|` is escaped (otherwise it breaks the markdown table).
 
-### 2c 的两条防假绿设计（都已实测）
+### Two anti-false-green designs in 2c (both measured)
 
-1. **只认本轮新写出的报告。** 判据是报告文件的 mtime ≥ 本轮启动时刻。若只看"目录里有没有 `fleet-eval-*.json`"，套件没跑起来时会读到**昨天的旧报告**并报全绿。
-2. **不解析控制台文本。** 失败明细从套件写出的 UTF-8 JSON 里取，避免中文在控制台编码上被吞。
+1. **Only trust the report freshly written this round.** The criterion is the report file's mtime ≥ this round's start time. If you only looked at "is there a `fleet-eval-*.json` in the directory", when the suite failed to launch you'd read **yesterday's old report** and report all green.
+2. **Don't parse console text.** Failure details are taken from the suite's UTF-8 JSON output, avoiding Chinese being swallowed by console encoding.
 
-实测（作者本机三个接线脚本，均直接从**已部署文件**里正则抽取 2c 块后执行，不是抄一份仿制品；因含本机私有路径，未随仓库发布）：
+Measured (the author's three wiring scripts, each extracting the 2c block from the **deployed file** by regex and executing it, not a copied imitation; not published with the repo because they contain local private paths):
 
-| 场景 | 结果 |
+| scenario | result |
 |---|---|
-| 正常 | ✅ 落盘 `fleet-eval 未过 2/9 项: frontmatter.name-matches-dir {"mismatch":3} ; junk.absent {"junk":11} \| ⚠️` |
-| node 不存在 | ⚠️ 走 catch 分支，未读旧报告 |
-| node 正常但报告写到别处（旧报告留在盘上） | ⚠️ `未产出本轮报告(exit=1，报告 mtime 早于本轮启动)` —— 拒读旧报告 |
+| normal | ✅ writes `fleet-eval failed 2/9 items: frontmatter.name-matches-dir {"mismatch":3} ; junk.absent {"junk":11} \| ⚠️` |
+| node missing | ⚠️ takes the catch branch, did not read an old report |
+| node fine but report written elsewhere (old report left on disk) | ⚠️ `no report produced this round (exit=1, report mtime earlier than this round's start)` — refuses to read an old report |
 
-### 回滚
+### Rollback
 
-原文件备份在同目录 `skills-update-scheduled.ps1.bak-before-fleet-eval-20261006`，用 `Copy-Item -Force` 覆盖回去即可。
+The original file is backed up in the same dir as `skills-update-scheduled.ps1.bak-before-fleet-eval-20261006`; overwrite back with `Copy-Item -Force`.
 
-> 注意：改这个 `.ps1` 必须保留 **UTF-8 BOM**——PowerShell 5.1 读无 BOM 的 `.ps1` 会按 GBK 解码，中文立即乱码。本次是用 node 读原字节、只替换内容、原样保留 BOM 写回的（实测我的验证脚本自己就栽在这个坑上）。
+> Note: editing this `.ps1` must preserve the **UTF-8 BOM** — PowerShell 5.1 decodes a BOM-less `.ps1` as GBK, garbling Chinese immediately. This change was made by reading the original bytes with node, replacing only the content, and writing back with the BOM preserved as-is (my own verification script tripped on this pit).
 
-## T1 首跑读数（2026-10-06，2 trials）
+## T1 first-run readings (2026-10-06, 2 trials)
 
 ```
-pass_rate = 77.8%  (7/9)   pass^2 = 77.8%     # 确定性任务 → pass^k == pass_rate，符合预期
-240 skills | 922 个 SKILL.md 逐端比对 | diff 0 | absent 0
+pass_rate = 77.8%  (7/9)   pass^2 = 77.8%     # deterministic task → pass^k == pass_rate, as expected
+240 skills | 922 SKILL.md per-endpoint compared | diff 0 | absent 0
 reconcile: differing 0 | unreadable 0 | hidden 38 | excluded-source 52
 ```
 
-两个真失败（**是发现，不是套件坏了**）：
+Two genuine failures (**findings, not the suite being broken**):
 
-- `frontmatter.name-matches-dir` — 3 处目录名 ≠ frontmatter `name`：
-  一处目录名大小写与 `name` 不符（`Foo` vs `foo`）、两处 `name` 与目录不符（带多余后缀 / 整体不同）。
-- `junk.absent` — 源树里 11 个残留：9 个 `*.bak*` + 2 个 `__pycache__`。`sync.ps1` 的排除表让它们扇不出去，所以只污染真源树。
+- `frontmatter.name-matches-dir` — 3 cases of directory name ≠ frontmatter `name`:
+  one case of directory-name casing mismatching `name` (`Foo` vs `foo`), two cases of `name` not matching the directory (extra suffix / entirely different).
+- `junk.absent` — 11 leftovers in the source tree: 9 `*.bak*` + 2 `__pycache__`. `sync.ps1`'s exclusion table keeps them from fanning out, so they only pollute the real source tree.
 
-这两条当时**没有自动修**——真源是 4 端的唯一写入点，改它要走 `sharedskills` 的既有纪律（改真源 → 跑 sync → 逐端对账）。**2026-10-06 修复轮已按该纪律执行完毕，读数见下。**
+These two were **not auto-fixed at the time** — the real source is the sole write point for 4 endpoints; changing it must follow the `sharedskills` discipline (edit the real source → run sync → per-endpoint reconcile). **The 2026-10-06 fix round has since been executed per that discipline; readings below.**
 
-## T1 修复轮读数（2026-10-06 12:58）— 9/9 全绿
+## T1 fix-round readings (2026-10-06 12:58) — 9/9 all green
 
 ```
-pass_rate = 100.0%  (9/9)        # 退出码 0
-240 skills | 922 个 SKILL.md 逐端比对 | diff 0 | absent 0
+pass_rate = 100.0%  (9/9)        # exit code 0
+240 skills | 922 SKILL.md per-endpoint compared | diff 0 | absent 0
 reconcile: differing 0 | unreadable 0 | aborted false
 ```
 
-| 项 | 动作 | 修后读数 |
+| item | action | post-fix reading |
 |---|---|---|
-| `frontmatter.name-matches-dir` | 改 3 处 frontmatter `name` 去等于目录名（**不动目录**，目录名被 `$hideFrom` 等多处引用）：即上述 3 处 | `{"mismatch":0}` |
-| 连带（名字改了，引用不能悬空） | 引用旧 `name` 的 SKILL.md 正文与 agent 配置字符串 | 已改，逐端核对 md5 |
-| `junk.absent` | 9 件真垃圾移入 `archive\junk-2026-10-06\`（8 个 `*.bak*` + 1 个 `__pycache__`，195.7 KB，逐件 sha256 台账） | `{"junk":0,"allowed":1}` |
-| 豁免登记 | 一个刻意保留的上游克隆件的 `.git`（内含本地提交，禁止 push / 碰 origin），按**精确路径**豁免；别的技能下再出现 `.git` 仍算垃圾 | 计入 `metrics.allowed` |
-| 套件自身的缺陷 | `junk.absent` 的 detail 原为 `slice(0,10)`，命中 11 时明细只列 10，读数与明细对不上；改为不截断 | 两份副本 md5 `1CF006A6` 一致 |
+| `frontmatter.name-matches-dir` | edited 3 frontmatter `name` values to equal the directory name (**did not touch the directories**, whose names are referenced by `$hideFrom` and elsewhere): the 3 above | `{"mismatch":0}` |
+| downstream (name changed, references can't dangle) | SKILL.md bodies and agent config strings that referenced the old `name` | changed, per-endpoint md5 checked |
+| `junk.absent` | 9 real junk items moved into `archive\junk-2026-10-06\` (8 `*.bak*` + 1 `__pycache__`, 195.7 KB, per-item sha256 ledger) | `{"junk":0,"allowed":1}` |
+| exemption registration | one deliberately kept upstream clone's `.git` (contains local commits, push / touching origin forbidden), exempted by **exact path**; a `.git` under any other skill still counts as junk | counted in `metrics.allowed` |
+| the suite's own defect | `junk.absent`'s detail was originally `slice(0,10)`; when 11 hit, the detail only listed 10, so the reading and the detail disagreed; changed to not truncate | both copies' md5 `1CF006A6` match |
 
-> 首跑明细的第 11 项被截断藏起来了，当时按行走序推断是那个 `.git` 豁免项 —— 核对成立。修复轮重扫时一个 `scripts/__pycache__` 已自行消失，故实到 9 件。
+> The 11th item of the first-run detail was hidden by truncation; at the time it was inferred by walk order to be that `.git` exemption item — the check held. On the fix round's rescan, one `scripts/__pycache__` had already disappeared on its own, so 9 items actually landed.
 
-改真源后的验证链：`sync.ps1` 扇出（4 端、0 冲突、excluded 42）→ **逐端定点核对** 6 个被改文件的 md5（含套件 `skillmd-parity` 不覆盖的 `openai.yaml`；唯一的 `ABSENT` 是某技能落在被 `$hideFrom` 隐藏的端点上，即既定隐藏）→ `fleet-eval.mjs` 9/9。
+Post-edit verification chain: `sync.ps1` fan-out (4 endpoints, 0 conflicts, excluded 42) → **per-endpoint targeted check** of the 6 changed files' md5 (including `openai.yaml`, which the suite's `skillmd-parity` doesn't cover; the only `ABSENT` was a skill landing on an endpoint hidden by `$hideFrom`, i.e. the pre-set hide) → `fleet-eval.mjs` 9/9.
 
-## T3 候选（就绪但未启用）
+## T3 candidates (ready but not enabled)
 
-- **Inspect AI** `UKGovernmentBEIS/inspect_ai`（英国 AISI 官方）——Task/Solver/Scorer 三件套，最中立，适合做研究级 agent 轨迹评测。需 Python + 各家 API key。
-- **Langfuse** 自托管——把 trace 留在自己的 D 盘，适合给 T2 的 A/B 补"生产可观测"那一半。
-- **腾讯 AI-Infra-Guard**——含 **Skills Scan / MCP Scan**，与"大量技能 + MCP"的形态直接对口，值得先做一次只读扫描再决定要不要纳入常规。
+- **Inspect AI** `UKGovernmentBEIS/inspect_ai` (UK AISI official) — Task/Solver/Scorer trio, the most neutral, suited to research-grade agent-trajectory evals. Needs Python + the various API keys.
+- **Self-hosted Langfuse** — keeps the trace on your own D drive, suited to adding the "production observability" half to T2's A/B.
+- **Tencent AI-Infra-Guard** — includes **Skills Scan / MCP Scan**, directly matching a "many skills + MCP" shape; worth a read-only scan once before deciding whether to make it routine.

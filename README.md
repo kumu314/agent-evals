@@ -14,6 +14,36 @@ Three sub-suites, layered by whether they cost money:
 | [`merge-eval/`](merge-eval/) | Bulk content merge: entries you did not touch must stay byte-for-byte identical (7 assertions) | 0 API calls | a repo under test |
 | [`t2/`](t2/) | Skill-gain A/B: same set of tasks, with vs. without the skill injected, compare pass rates | needs an API key | any OpenAI-compatible endpoint |
 
+## How it fits together
+
+```mermaid
+flowchart TB
+  subgraph PR["One shared set of judging principles"]
+    P1["Deterministic graders only: regex / md5 / byte-compare / exit code / remote-ref truth - never an LLM judge"]
+    P2["Evidence must be externally re-readable artifacts, never self-reports"]
+    P3["For assets that must stay stable, judge pass^k, not pass@k"]
+    P4["When you see red, suspect the criterion first"]
+  end
+
+  subgraph SU["Three suites, layered by whether they cost money"]
+    F["fleet-eval: skill-library regression, 11 assertions, 0 API calls"]
+    M["merge-eval: content-merge byte identity, 7 assertions, 0 API calls"]
+    T["t2: skill-gain A/B, needs an API key"]
+  end
+
+  PR --> SU
+
+  subgraph AB["t2 A/B flow"]
+    A["same task set"] --> B["control arm: no skill"]
+    A --> C["treated arm: skill body injected"]
+    B --> G["deterministic regex grader"]
+    C --> G
+    G --> L["pass rate + lift = directional evidence, not a precise effect size"]
+  end
+
+  T --> AB
+```
+
 ## Why it is split this way
 
 All three suites share one set of judging principles — the reason this repo exists:

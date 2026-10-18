@@ -3,6 +3,7 @@
 中文 | [English](README.md)
 
 [![ci](https://github.com/kumu314/agent-evals/actions/workflows/ci.yml/badge.svg)](https://github.com/kumu314/agent-evals/actions/workflows/ci.yml)
+[![license: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 把「AI agent 干活到底靠不靠谱」写成可机械判定的断言，每次改动后跑一遍，掉了就报红。
 
@@ -13,6 +14,18 @@
 | [`fleet-eval/`](fleet-eval/) | 技能库全量回归：frontmatter 合法性、重名、垃圾残留、多端扇出一致性（11 项断言） | 0 API 调用 | 一个磁盘上的技能库 |
 | [`merge-eval/`](merge-eval/) | 批量内容合入：未触及的条目必须逐字节不变（7 项断言） | 0 API 调用 | 一个被测仓库 |
 | [`t2/`](t2/) | 技能增益 A/B：同一批任务，带技能 vs 不带技能，比通过率 | 需要 API key | 任意 OpenAI 兼容端点 |
+
+## 目录
+
+- [全景图](#全景图)
+- [为什么这样拆](#为什么这样拆)
+- [t2 测什么、不测什么](#t2-测什么不测什么)
+- [快速开始](#快速开始)
+- [跑起来长什么样](#跑起来长什么样)
+- [目录结构](#目录结构)
+- [一处诚实说明](#一处诚实说明)
+- [谁做的、给谁看](#谁做的给谁看)
+- [许可](#许可)
 
 ## 全景图
 
@@ -186,7 +199,7 @@ control pass = 0%    treated pass = 100%    lift = 100 个百分点
 => 两臂可区分（管线有判别力）
 ```
 
-## 目录
+## 目录结构
 
 ```
 agent-evals/

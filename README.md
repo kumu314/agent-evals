@@ -3,6 +3,7 @@
 English | [中文](README.zh-CN.md)
 
 [![ci](https://github.com/kumu314/agent-evals/actions/workflows/ci.yml/badge.svg)](https://github.com/kumu314/agent-evals/actions/workflows/ci.yml)
+[![license: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 Turn "how reliable are AI agents at real work" into machine-checkable assertions, run them after every change, and get a red flag the moment something slips.
 
@@ -13,6 +14,18 @@ Three sub-suites, layered by whether they cost money:
 | [`fleet-eval/`](fleet-eval/) | Full skill-library regression: frontmatter validity, duplicate names, leftover junk, multi-endpoint fan-out consistency (11 assertions) | 0 API calls | a skill library on disk |
 | [`merge-eval/`](merge-eval/) | Bulk content merge: entries you did not touch must stay byte-for-byte identical (7 assertions) | 0 API calls | a repo under test |
 | [`t2/`](t2/) | Skill-gain A/B: same set of tasks, with vs. without the skill injected, compare pass rates | needs an API key | any OpenAI-compatible endpoint |
+
+## Table of contents
+
+- [How it fits together](#how-it-fits-together)
+- [Why it is split this way](#why-it-is-split-this-way)
+- [What t2 does and does not test](#what-t2-does-and-does-not-test)
+- [Quick start](#quick-start)
+- [What a run looks like](#what-a-run-looks-like)
+- [Directory layout](#directory-layout)
+- [One note of honesty](#one-note-of-honesty)
+- [Who made this, who it is for](#who-made-this-who-it-is-for)
+- [License](#license)
 
 ## How it fits together
 

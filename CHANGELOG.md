@@ -90,6 +90,7 @@
 ### 设计口径
 - 能确定性判定就不请 LLM 当裁判；证据只认外部可复读物证（sha256/远端读数/退出码）；面向稳定资产判 `pass^k`；看到红先怀疑判据。
 
-[Unreleased]: https://github.com/kumu314/agent-evals/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/kumu314/agent-evals/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/kumu314/agent-evals/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/kumu314/agent-evals/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/kumu314/agent-evals/tree/v0.1.0

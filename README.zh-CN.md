@@ -2,8 +2,18 @@
 
 中文 | [English](README.md)
 
+![agent-evals — 给 AI agent 的确定性评测](assets/hero-banner.png)
+
 [![ci](https://github.com/kumu314/agent-evals/actions/workflows/ci.yml/badge.svg)](https://github.com/kumu314/agent-evals/actions/workflows/ci.yml)
-[![license: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![license: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
+[![node](https://img.shields.io/badge/node-20.11%2B-brightgreen.svg)](package.json)
+[![runtime deps](https://img.shields.io/badge/runtime%20deps-zero-blue.svg)](package.json)
+[![version](https://img.shields.io/badge/version-0.3.0-lightgrey.svg)](CHANGELOG.md)
+[![models measured](https://img.shields.io/badge/models%20measured-11-8ab4f8.svg)](docs/t2-results.md)
+
+> **一句话结论** — 在一把锁定的确定性 8 任务 A/B 尺子（`temperature=0`、AND 门判分）上，注入一条写得好的 skill 能把模型通过率抬升 **+38 ~ +75 个百分点**，并在 **11 个模型**上复现。没有 LLM 裁判、不靠感觉：这里每个数字都是一条可重跑的断言。
+
+**适合谁：** 要给自己的 agent 技能或内容流水线加一道"会响亮且可复现地报红"回归闸的团队——三套件里有两套零 API 成本即可跑。**不适合谁：** 想找一套拿 LLM 当裁判打分的量表的人——本仓库刻意不这么做。
 
 把「AI agent 干活到底靠不靠谱」写成可机械判定的断言，每次改动后跑一遍，掉了就报红。
 

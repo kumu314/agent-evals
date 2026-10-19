@@ -2,8 +2,18 @@
 
 English | [中文](README.zh-CN.md)
 
+![agent-evals — deterministic evals for AI agents](assets/hero-banner.png)
+
 [![ci](https://github.com/kumu314/agent-evals/actions/workflows/ci.yml/badge.svg)](https://github.com/kumu314/agent-evals/actions/workflows/ci.yml)
-[![license: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![license: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
+[![node](https://img.shields.io/badge/node-20.11%2B-brightgreen.svg)](package.json)
+[![runtime deps](https://img.shields.io/badge/runtime%20deps-zero-blue.svg)](package.json)
+[![version](https://img.shields.io/badge/version-0.3.0-lightgrey.svg)](CHANGELOG.md)
+[![models measured](https://img.shields.io/badge/models%20measured-11-8ab4f8.svg)](docs/t2-results.md)
+
+> **TL;DR** — Injecting a well-written skill lifts a model's pass rate by **+38 ~ +75 percentage points** on a locked, deterministic 8-task A/B harness (`temperature=0`, AND-gate grading), reproduced across **11 models**. No LLM judge, no vibes: every number here is a re-runnable assertion.
+
+**Who this is for:** teams shipping agent skills or content pipelines that need a regression gate which fails loudly and reproducibly — two of the three suites run at zero API cost. **Who it is not for:** anyone looking for an LLM-as-judge scoring rubric; this repo deliberately avoids one.
 
 Turn "how reliable are AI agents at real work" into machine-checkable assertions, run them after every change, and get a red flag the moment something slips.
 

@@ -1,0 +1,15 @@
+cff-version: 1.2.0
+message: "If you use agent-evals in research or tooling, please cite it as below."
+title: "agent-evals: deterministic regression evals for AI agents"
+type: software
+authors:
+  - name: "kumu314"
+repository-code: "https://github.com/kumu314/agent-evals"
+url: "https://github.com/kumu314/agent-evals"
+license: MIT
+version: "0.3.0"
+keywords:
+  - agent-evaluation
+  - deterministic-testing
+  - regression-suite
+  - llm-agents

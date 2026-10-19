@@ -60,7 +60,7 @@ t2 的价值全在**判据设计**：判据必须落在"技能正文里有、裸
 
 ## 5. 发版检查清单
 
-1. `npm test` 全绿（selftest + T2 dry + demo + merge drill + fleet core）。
+1. `npm test` 全绿（selftest + T2 dry + demo + merge drill + fleet core + README 数字指纹守卫，即第 6 步）。
 2. 三平台 CI 绿（ubuntu / windows / macos，`shell: bash`）。
 3. `CHANGELOG.md` 的 `[Unreleased]` 固化成本版号，补 tag 链接。
 4. 判据语义有变动的，确认文档（各套件 README、`docs/eval-primitives.md`）同步——文档里的读数必须能在仓库脚本里当场复现，转述不算。

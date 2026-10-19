@@ -60,7 +60,7 @@ Regex-escaping reminder: criteria are "as long as it hits" broad standards — d
 
 ## 5. Release checklist
 
-1. `npm test` all green (selftest + T2 dry + demo + merge drill + fleet core).
+1. `npm test` all green (selftest + T2 dry + demo + merge drill + fleet core + README number guard, the 6th step).
 2. Three-platform CI green (ubuntu / windows / macos, `shell: bash`).
 3. Freeze `CHANGELOG.md`'s `[Unreleased]` into this version number, add the tag link.
 4. If criterion semantics changed, confirm the docs (each suite's README, `docs/eval-primitives.md`) are in sync — every reading in the docs must be reproducible on the spot with a script in the repo; hearsay does not count.

@@ -41,3 +41,5 @@ jobs:
         run: |
           set -e
           FLEET_SHARED=demo/fixture-clean FLEET_SCOPE=core node fleet-eval/fleet-eval.mjs --trials 1
+      - name: README 数字双向指纹守卫（零依赖，中英镜像 + 概要可溯源）
+        run: node guard-readme-numbers.mjs

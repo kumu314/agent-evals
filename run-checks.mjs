@@ -22,6 +22,10 @@ const STEPS = [
     argv: ['fleet-eval/fleet-eval.mjs', '--trials', '1'],
     env: { FLEET_SHARED: path.join(ROOT, 'demo', 'fixture-clean'), FLEET_SCOPE: 'core' },
   },
+  {
+    name: 'README 数字双向指纹守卫（中英镜像 + 概要可溯源）',
+    argv: ['guard-readme-numbers.mjs'],
+  },
 ];
 
 function run(step) {

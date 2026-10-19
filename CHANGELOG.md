@@ -5,7 +5,7 @@
 ## [Unreleased]
 
 ### 新增
-- README 可宣传化重构：t2 结果区从散文墙改为「概要表 + 核心结论 + 逐模型链接」，逐行明细原样搬入 `docs/t2-results.md`（中英双语）；新增 hero banner、徽章行与 TL;DR 战报，补 `CITATION.cff`、PR 模板与 `docs/README.md` 索引。所有评测数字一字未改，由双向 token 指纹守卫机械证明。
+- README 可宣传化重构：t2 结果区从散文墙改为「概要表 + 核心结论 + 逐模型链接」，逐行明细原样搬入 `docs/t2-results.md`（中英双语）；新增 hero banner、徽章行与 TL;DR 战报，补 `CITATION.cff`、PR 模板与 `docs/README.md` 索引。所有评测数字一字未改；「中英镜像逐 token 相等 + 概要数字全部可溯源到明细」由 `guard-readme-numbers.mjs` 机械校验（负对照：改一个数字即翻红），已接入 `npm test` 与 CI。
 - t2 支持混合思考模型：opt-in `T2_DISABLE_THINKING=1` 随请求发送官方参数 `thinking:{type:"disabled"}`。实测小米 MIMO `mimo-v2.6-flash` 默认开思考，真实任务单次 94s，必撞 `askOnce` 的 60s 超时；且思考模式下给小 `max_tokens` 时 `content` 为空（reasoning 吃满预算，`finish_reason=length`）。不设该变量时请求体一字不改，DeepSeek / zhipu 既有读数口径不受影响。
 - t2 扩批：新增 4 颗被测技能（`stale-output-layers` / `line-anchor-drift` / `text-encoding-forensics` / `git-push-fake-timeout`，均 MIT、去个人信息）与对应 4 条任务，`smoke-ab.mjs` 的 `TASKS` / `DRY_ANSWERS` 同步扩到 8 任务，样本量从每臂 12 提到 24。`--dry` 双臂仍完全拉开（每臂 24 次，control 0 / treated 24 / lift 100）。
 - 新增 `docs/maintainer-runbook.md`：单维护者项目的接管指引——三十秒心智模型、按成本从低到高排序的跑法表、加一颗 t2 技能+任务（判据设计、dry 不过禁进真跑）、加/改断言（必须同改 drill 造负例、fail-closed、`FLEET_SCOPE=core` 解耦布局耦合）、红了怎么排查、发版清单、环境依赖。

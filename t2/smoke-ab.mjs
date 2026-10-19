@@ -297,29 +297,41 @@ const DRY_ANSWERS = {
 async function run() {
   const activeTasks = ONLY_TASK.length ? TASKS.filter((t) => ONLY_TASK.includes(t.id)) : TASKS;
   const arms = ONLY_ARM === 'both' ? ['control', 'treated'] : [ONLY_ARM];
-  const rows = [];
+  // 展开成 cell 列表，严格按 task -> arm -> trial 顺序；skillText 每个 task 预载一次（无额外 IO）。
+  const cells = [];
   for (const task of activeTasks) {
     const skillText = DRY ? '(dry-run 不读技能正文)' : loadSkill(task.skill);
     for (const arm of arms) {
-      for (let t = 1; t <= TRIALS; t++) {
-        let ans, err = null;
-        if (DRY) ans = DRY_ANSWERS[task.id][arm];
-        else {
-          try { ans = await ask(systemFor(arm, task.skill, skillText), task.prompt); }
-          catch (e) { err = e; }
-        }
-        if (err) {
-          const kind = err.toolCall ? 'TOOLCALL' : 'ERROR';
-          if (DUMP) console.log('\n===== ' + task.id + ' / ' + arm + ' / t' + t + ' ===== [' + kind + '] ' + err.message.slice(0, 120) + '\n');
-          rows.push({ task: task.id, arm, trial: t, passed: false, hits: [], chars: 0, err: kind, msg: err.message.slice(0, 90) });
-          continue;
-        }
-        const s = score(ans, task);
-        if (DUMP) console.log('\n===== ' + task.id + ' / ' + arm + ' / t' + t + ' =====\n' + ans + '\n');
-        rows.push({ task: task.id, arm, trial: t, passed: s.passed, hits: s.hits, chars: ans.length });
-      }
+      for (let t = 1; t <= TRIALS; t++) cells.push({ task, arm, t, skillText });
     }
   }
+
+  // 每个 cell 独立产出其 row（形状与串行版逐字节一致）；DRY 为纯同步，不触网。
+  const runCell = async ({ task, arm, t, skillText }) => {
+    let ans, err = null;
+    if (DRY) ans = DRY_ANSWERS[task.id][arm];
+    else {
+      try { ans = await ask(systemFor(arm, task.skill, skillText), task.prompt); }
+      catch (e) { err = e; }
+    }
+    if (err) {
+      const kind = err.toolCall ? 'TOOLCALL' : 'ERROR';
+      if (DUMP) console.log('\n===== ' + task.id + ' / ' + arm + ' / t' + t + ' ===== [' + kind + '] ' + err.message.slice(0, 120) + '\n');
+      return { task: task.id, arm, trial: t, passed: false, hits: [], chars: 0, err: kind, msg: err.message.slice(0, 90) };
+    }
+    const s = score(ans, task);
+    if (DUMP) console.log('\n===== ' + task.id + ' / ' + arm + ' / t' + t + ' =====\n' + ans + '\n');
+    return { task: task.id, arm, trial: t, passed: s.passed, hits: s.hits, chars: ans.length };
+  };
+
+  // 并发跑（上限 K，默认 4，国内 API 有 RPM 限制；瞬时 503/429 已由 ask() 退避重试兜底）。
+  // 结果按原始下标写回，rows 顺序 = 串行版 task x arm x trial，并发完成先后不影响呈现顺序与任何读数口径。
+  const K = Math.max(1, Math.min(Number(process.env.T2_CONCURRENCY) || 4, cells.length || 1));
+  const results = new Array(cells.length);
+  let cursor = 0;
+  const worker = async () => { while (cursor < cells.length) { const i = cursor++; results[i] = await runCell(cells[i]); } };
+  await Promise.all(Array.from({ length: K }, () => worker()));
+  const rows = results;
   // 汇总：有效率只算"拿到了文本答案"的调用；工具调用/报错单列，不混进通过率
   const by = (arm) => rows.filter((r) => r.arm === arm);
   const valid = (arm) => by(arm).filter((r) => !r.err);

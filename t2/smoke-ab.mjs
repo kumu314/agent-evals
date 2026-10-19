@@ -294,6 +294,16 @@ const DRY_ANSWERS = {
   },
 };
 
+// Wilson score 95% 区间（二值小样本比 bootstrap 稳；宽区间本身就是"方向性证据"的数字形式）。
+function wilson(k, n, z = 1.96) {
+  if (!n) return [0, 0];
+  const p = k / n;
+  const d = 1 + (z * z) / n;
+  const centre = p + (z * z) / (2 * n);
+  const half = z * Math.sqrt((p * (1 - p)) / n + (z * z) / (4 * n * n));
+  return [(centre - half) / d, (centre + half) / d];
+}
+
 async function run() {
   const activeTasks = ONLY_TASK.length ? TASKS.filter((t) => ONLY_TASK.includes(t.id)) : TASKS;
   const arms = ONLY_ARM === 'both' ? ['control', 'treated'] : [ONLY_ARM];
@@ -352,7 +362,10 @@ async function run() {
     console.log(`${arm.padEnd(7)} 有效 ${a.length}/${by(arm).length}（通过 ${a.filter((r) => r.passed).length}）  工具调用 ${tc}  报错 ${er}`);
   }
   const c = rate('control'), t = rate('treated');
-  console.log(`control pass = ${(c * 100).toFixed(0)}%    treated pass = ${(t * 100).toFixed(0)}%    lift = ${((t - c) * 100).toFixed(0)} 个百分点`);
+  const kOf = (a) => valid(a).filter((r) => r.passed).length;
+  const nOf = (a) => valid(a).length;
+  const ci = (a) => { const [lo, hi] = wilson(kOf(a), nOf(a)); return `[${Math.round(lo * 100)},${Math.round(hi * 100)}]`; };
+  console.log(`control pass = ${(c * 100).toFixed(0)}% ${ci('control')}   treated pass = ${(t * 100).toFixed(0)}% ${ci('treated')}   lift = ${((t - c) * 100).toFixed(0)} 个百分点`);
   const anyErr = rows.some((r) => r.err);
   console.log(t - c > 0
     ? '=> 两臂可区分（管线有判别力）'

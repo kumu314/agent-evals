@@ -171,7 +171,7 @@ tasks    = bad-advice-runtime(runtime-resolution-and-abi), merge-verify-ritual(s
 ...
 control valid 24/24 (passed 0)   tool calls 0   errors 0
 treated valid 24/24 (passed 24)  tool calls 0   errors 0
-control pass = 0%    treated pass = 100%    lift = 100 percentage points
+control pass = 0% [0,14]   treated pass = 100% [86,100]   lift = 100 percentage points
 => the two arms are distinguishable (the pipeline has discriminative power)
 ```
 

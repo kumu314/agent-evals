@@ -213,7 +213,7 @@ tasks    = bad-advice-runtime(runtime-resolution-and-abi), merge-verify-ritual(s
 ------------------------------------------------------------------------
 control 有效 24/24（通过 0）  工具调用 0  报错 0
 treated 有效 24/24（通过 24）  工具调用 0  报错 0
-control pass = 0%    treated pass = 100%    lift = 100 个百分点
+control pass = 0% [0,14]   treated pass = 100% [86,100]   lift = 100 个百分点
 => 两臂可区分（管线有判别力）
 ```
 

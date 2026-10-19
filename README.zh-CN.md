@@ -108,10 +108,13 @@ t2 是**模型档位选型工具**，不是"技能通用有效性"工具。它�
 | 智谱 | glm-5.3（`reasoning_effort=low`） | 13%（3/24） | 88%（21/24） | **+75 pp** |
 | MIMO | mimo-v2.6-pro（`thinking:disabled`） | 29%（7/24） | 96%（23/24） | **+67 pp** |
 | 阿里云 | qwen3.8-flash（`reasoning_effort=low`） | 29%（7/24） | 75%（18/24） | **+46 pp** |
+| 阿里云 | qwen3.8-max（`reasoning_effort=low`） | 25%（6/24） | 63%（15/24） | **+38 pp** |
 
 deepseek-flash：工具调用 0，3 次 `terminated` 瞬时断连（不计入通过率分母，与其他各行同口径）。glm-5.3 与 mimo-v2.6-pro：工具调用 0 / 报错 0。**两处如实偏离**：glm-5.3 始终思考且拒绝 `thinking:disabled`，默认（max）思考单次约 148s、超过 harness 的 60s 超时，故以 `reasoning_effort=low`（单次约 14s）跑，其 13% 裸答下限是该档位的特性、不等于 native-max 能力；mimo-v2.6-pro 原生思考同样撞 60s 超时，故以 `T2_DISABLE_THINKING=1` 跑（与上方 `mimo-v2.6-flash` 同样处置）。为此 harness 新增一个可选的 `T2_REASONING_EFFORT` 透传（默认不设 → 对之前任何一行零改变）。结合 R1 看：当前前沿档的 lift 仍宽（**+55 ~ +75 pp**），并不随模型变强而压向 0；天花板仍是**局部**的（glm-5.3 连最难的 `push-hung-recheck` 裸答都 PASS），因为 AND 门判分会在领域特定任务上始终留至少一条技能独有判据未命中。**仍是 n=24 的方向性证据，与其他各行同样的口径限制。**
 
-**Qwen3.8-flash 补充（2026-10-19）**：另跑阿里云 `qwen3.8-flash`（同一把锁定尺子、ID 现拉其 `/models` 端点确认）。原生思考很重、单次约 122s、超过 60s 超时，故以 `reasoning_effort=low`（单次约 20s）跑——沿用 glm-5.3 的同一个透传、尺子未动。读数：**control 29%（7/24）、treated 75%（18/24）、lift +46 pp**——工具调用 0 / 报错 0。这是本 fleet **最窄**的 lift，但它是对结论的细化而非推翻：当前代 flash 档把**裸答下限**抬到偏高（29%、仅次于饱和任务，`bad-advice-runtime` 双臂饱和），treated 仍明显领先，而 AND 门让 `hash-mismatch-invisible` 连 treated 也只命中 3 条判据里的 2 条。仍是 n=24 的方向性证据，与其他各行同样的口径限制。
+**Qwen3.8-flash 补充（2026-10-19）**：另跑阿里云 `qwen3.8-flash`（同一把锁定尺子、ID 现拉其 `/models` 端点确认）。原生思考很重、单次约 122s、超过 60s 超时，故以 `reasoning_effort=low`（单次约 20s）跑——沿用 glm-5.3 的同一个透传、尺子未动。读数：**control 29%（7/24）、treated 75%（18/24）、lift +46 pp**——工具调用 0 / 报错 0。这是当时本 fleet **最窄**的 lift（下方 qwen3.8-max 更窄），但它是对结论的细化而非推翻：当前代 flash 档把**裸答下限**抬到偏高（29%、仅次于饱和任务，`bad-advice-runtime` 双臂饱和），treated 仍明显领先，而 AND 门让 `hash-mismatch-invisible` 连 treated 也只命中 3 条判据里的 2 条。仍是 n=24 的方向性证据，与其他各行同样的口径限制。
+
+**Qwen3.8-max 补充（2026-10-19）**：另跑旗舰 `qwen3.8-max`，同一把锁定尺子、同款 `reasoning_effort=low` 透传（原生思考更重，low 把单次压到约 20s、落进 60s 窗口）。读数：**control 25%（6/24）、treated 63%（15/24）、lift +38 pp**——工具调用 0 / 报错 0。这是当前本 fleet **最窄**的 lift，低于 qwen3.8-flash 的 +46，把趋势推得更细而非推翻：整条 Qwen 线单调收窄（flash +46、max +38，低于 deepseek/glm/mimo 批的 +55~+75）但仍为正。更强同品牌档把裸答下限再抬高（control 裸答把 `bad-advice-runtime`、`guard-never-fires` 两任务双双 3/3 打满），留给技能的 AND 门空间更小；且一个反直觉信号——max 的 treated 反而低于 flash（63% vs 75%）：更强的模型对具体判据措辞并非一律更准（`merge-verify-ritual` treated 掉到 1/3）。AND 门在缺技能独有判据处仍咬住（`hash-mismatch-invisible` treated 0/3、`push-hung-recheck` treated 2/3）。仍是 n=24 方向性证据，与其他各行同样的口径限制。
 
 **使用建议**：
 - 想验证"我的 skill 到底有没有用"→ 先确保测试档位 ≥ 目标部署档位，否则测的是模型上限而不是 skill 质量。

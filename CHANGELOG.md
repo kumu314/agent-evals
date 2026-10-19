@@ -4,6 +4,14 @@
 
 ## [Unreleased]
 
+### 本次修缮（2026-10-19 ~ 10-20，v0.3.0 发版后）
+
+- **新增 t2 并发执行**：`smoke-ab.mjs` 的 task × arm × trial cell 由串行 `await` 改为并发跑（上限 4，`T2_CONCURRENCY` 可覆盖；瞬时 503/429 仍由 `ask()` 退避重试兜底），结果按原始下标写回，`rows` 呈现顺序与串行版逐字节一致。负对照：`--dry` stdout 改前改后 SHA256 相同，任何读数与口径不受并发影响。
+- **新增区间估计**：每臂通过率附 Wilson 95% 置信区间（如 `treated pass = 63% [43,80]`）。n=24 是小样本，宽区间本身就是「方向性证据」的数字形式，比文字兜底更硬；零新依赖。
+- **变更 README TL;DR 口径**：抬升区间由「+38~+75 across 11 models」改准为「+4 ~ +75——11 颗中 10 颗越过 +38，唯一下限 glm-4-flash（+4）如实报告为能力下限」，消除 headline 与明细表（glm-4-flash +4）的矛盾；评测数字一字未改。
+- **文档**：`guard-readme-numbers.mjs` 头部补边界声明（守卫证明「数字未改 + 概要可溯源」，不证明「数字本身正确」）；`docs/maintainer-runbook.md` 发版清单第 1 步补列第 6 步 README 守卫；README 双语 `--dry` 输出转写同步为含区间的新版。
+## [0.3.0] - 2026-10-19
+
 ### 新增
 - README 可宣传化重构：t2 结果区从散文墙改为「概要表 + 核心结论 + 逐模型链接」，逐行明细原样搬入 `docs/t2-results.md`（中英双语）；新增 hero banner、徽章行与 TL;DR 战报，补 `CITATION.cff`、PR 模板与 `docs/README.md` 索引。所有评测数字一字未改；「中英镜像逐 token 相等 + 概要数字全部可溯源到明细」由 `guard-readme-numbers.mjs` 机械校验（负对照：改一个数字即翻红），已接入 `npm test` 与 CI。
 - t2 支持混合思考模型：opt-in `T2_DISABLE_THINKING=1` 随请求发送官方参数 `thinking:{type:"disabled"}`。实测小米 MIMO `mimo-v2.6-flash` 默认开思考，真实任务单次 94s，必撞 `askOnce` 的 60s 超时；且思考模式下给小 `max_tokens` 时 `content` 为空（reasoning 吃满预算，`finish_reason=length`）。不设该变量时请求体一字不改，DeepSeek / zhipu 既有读数口径不受影响。
@@ -34,25 +42,25 @@
 - **t2 真跑 A/B（第九个数据点：当前代旗舰 qwen3.8-max，2026-10-19，同一把 v2+v3 尺子，8 任务 × 3 trials × 2 臂 = 每臂 24 次）**：模型 ID 现拉阿里云 DashScope `/models` 端点确认。**口径偏离**：qwen3.8-max 默认重思考、单次远超 60s 超时，故沿用 `reasoning_effort=low`（单次约 20s、与 flash/glm 同款透传、未再改尺子）。control **25%**（6/24）、treated **63%**（15/24）、**lift = +38 pp**——本 fleet 最窄；工具调用 0 / 报错 0。逐任务：`bad-advice-runtime`、`guard-never-fires` 双臂均 3/3（control 裸答饱和两点、抬高裸答下限）；`hash-mismatch-invisible` treated 三试均 FAIL（只命中 2/3 判据）；`changed-but-not-visible`、`merge-verify-ritual` treated 各 1/3；`push-hung-recheck` treated 2/3。机理与 flash 行同向且更极端：更强旗舰把裸答下限再抬高、AND 门可移动空间更小，lift 收到 +38（< flash +46 < R1/MIMO +67 < glm +75）；treated 甚至低于 flash（63% vs 75%）——更强的模型对具体判据措辞并非一律更准。补充趋势、非推翻结论；n=24 方向性证据。
 - **t2 真跑 A/B（第十个数据点：新品牌旗舰预览 阶跃星辰 step-5-preview，2026-10-19，同一把 v2+v3 尺子，8 任务 × 3 trials × 2 臂 = 每臂 24 次）**：模型 ID 现拉阶跃星辰 `/models` 端点确认（`https://api.stepfun.com/v1`）。**无口径偏离**：`step-5-preview` 原生跑即可——单次约 37s、落进 60s 窗口、`reasoning_tokens=0`（不需思考开关）。control **21%**（5/24）、treated **83%**（20/24）、**lift = +63 pp**；工具调用 0 / 报错 0（少数单次越过 60s 被 harness 自动重试救回，48 次最终全有效）。逐任务：`merge-verify-ritual`、`tautology-detector`、`stale-line-citation` 三项 0/3→3/3 干净制胜；`bad-advice-runtime`、`guard-never-fires` 双臂饱和；`push-hung-recheck` 仍最难（treated 1/3）。定位：第 6 个前沿模型/第 5 个前沿供应商家族；其裸答下限 21% 是本批第二低（仅高于 glm-5.3 的 13%），故 lift 落在中等偏宽——印证「lift 跟着裸答下限走、下限≠档位」这条批内规律（qwen3.8-max 的 +38 仍是本批最窄，未被推翻）。补充结论、非推翻；n=24 方向性证据。
 
-## [0.3.0] - 2026-10-15
+### 首批工程与 CI 落地（2026-10-15，并入本版 v0.3.0）
 
 外部评审落地（2026-10-15）：CI 三平台矩阵、ghMainSha 注入面归零、merge-eval 耦合前置声明、SPDX/.nvmrc；并把上一轮的 `package.json` / `run-checks.mjs` / CI fleet-core 自检一并纳入本版。
 
-### 新增
+#### 新增
 - `package.json`：声明运行时门槛 `engines.node >= 20.11` 与一键自检入口 `npm test`（= `node run-checks.mjs`）。
 - `run-checks.mjs`：跨平台一键自检器，env 在进程内设（不依赖 shell 的 `VAR=val` 前缀，Windows 可跑），复刻 CI 的零 API/零网络自检序列（selftest + T2 `--dry` + demo + merge-eval drill + fleet-eval core），逐步 rc 台账，任一失败即非零退出。
 - CI 增 `fleet-eval core 作用域自检`（`FLEET_SCOPE=core` 跑仓库自带样例库，零网络），补上 CI 此前未覆盖 fleet core 断言的盲区。
 - `.nvmrc`（=20）对齐 CI 的 node 版本；全部 `.mjs` 文件头补 `SPDX-License-Identifier: MIT`。
 
-### 变更
+#### 变更
 - README 快速开始补 `npm test` 一行，把散文版运行要求指向一条可复跑命令。
 - CI 补 ubuntu-latest / windows-latest / macos-latest 三平台矩阵，统一 `shell: bash`（本套件极重 Windows 兼容，此前却只在 ubuntu 跑过 CI）。
 - merge-eval `ghMainSha`：读远端 sha 的降级路径由内嵌 Python（取 token + urllib）改为一条 `gh api repos/<slug>/git/refs/heads/main --jq .object.sha`，内嵌脚本源码整段移除、注入面归零。
 
-### 修复
+#### 修复
 - SECURITY.md 与代码/CI 对齐：命令注入条目随 `ghMainSha` 减面更新为"内嵌脚本源码整段移除"；merge-eval README 顶部前置声明判据绑定 `index.html`+`const POEMS`+`review-*.md` 内容站形态。
 
-### 验证
+#### 验证
 - **t2 真跑 A/B（评审 #3 落地）**：本机 DeepSeek（`deepseek-chat`，`temperature=0`）双臂 × 4 任务 × 3 trials = 24 次生成；打分仍走确定性正则，不用 LLM 当裁判（零额外成本）。
   - control 通过率 **25%**（3/12）、treated 通过率 **100%**（12/12）、**lift = 75 个百分点**。
   - 4 项任务中 3 项两臂完全拉开（`merge-verify-ritual` / `guard-never-fires` / `tautology-detector`）；1 项两臂撞天花板（`bad-advice-runtime`，DeepSeek 已内化该知识）——如实记录，不粉饰。

@@ -208,6 +208,9 @@ async function askOnce(system, user) {
         // 混合思考模型（如 mimo-v2.6-flash）默认开思考：首 token 延迟高、单次可超 60s 撞上面的超时。
         // T2_DISABLE_THINKING=1 显式关闭（官方 OpenAI 兼容参数 thinking.type）；其他 provider 不带此参数，行为不变。
         ...(process.env.T2_DISABLE_THINKING === '1' ? { thinking: { type: 'disabled' } } : {}),
+        // 部分思考模型（如 glm-5.3）不支持关思考、max 档单次远超 60s；T2_REASONING_EFFORT 透传官方
+        // OpenAI 兼容参数 reasoning_effort（如 low）压低思考量以落进超时。未设时不带此参数，其他 provider 行为不变。
+        ...(process.env.T2_REASONING_EFFORT ? { reasoning_effort: process.env.T2_REASONING_EFFORT } : {}),
       }),
       signal: ctl.signal,
     });

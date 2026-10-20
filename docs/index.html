@@ -1,0 +1,316 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Skill-gain across 11 models — agent-evals</title>
+<meta name="description" content="Same 8 tasks, temperature=0, deterministic regex grading, no LLM judge. Skill injection lift measured across 11 models from 5 vendors.">
+<style>
+  :root{
+    --paper:#f7f4ee; --panel:#fffdf8; --ink:#171614; --muted:#6b665c;
+    --line:#ded7c9; --accent:#1f5c3f; --accent-soft:#e4ede6;
+    --bar:#c2603e; --bar-soft:#f0d9cf; --warn:#8a4b12;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Songti SC", serif;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --paper:#141412; --panel:#1c1b18; --ink:#efeae0; --muted:#a39c8e;
+      --line:#33302a; --accent:#8fc7a8; --accent-soft:#20302a;
+      --bar:#e08a63; --bar-soft:#3a271f; --warn:#e0b07a;
+    }
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.6 var(--sans)}
+  .wrap{max-width:1080px;margin:0 auto;padding:32px 20px 72px}
+  a{color:var(--accent);text-decoration-thickness:1px;text-underline-offset:2px}
+  a:hover{text-decoration-style:wavy}
+  .top{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+  .brand{font:600 13px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+  .lang{border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:999px;padding:6px 14px;font:500 13px var(--sans);cursor:pointer}
+  .lang:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+
+  header.hero{margin:44px 0 0;border-bottom:1px solid var(--line);padding-bottom:28px}
+  h1{font:600 clamp(30px,5vw,46px)/1.12 var(--serif);margin:0 0 10px;letter-spacing:-.01em}
+  .dek{font-size:clamp(17px,2.2vw,20px);color:var(--muted);max-width:62ch;margin:0}
+  .facts{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:1px;background:var(--line);border:1px solid var(--line);margin:28px 0 0}
+  .fact{background:var(--panel);padding:14px 16px}
+  .fact b{display:block;font:600 24px/1.15 var(--mono);letter-spacing:-.02em}
+  .fact span{display:block;font-size:12px;color:var(--muted);margin-top:5px;line-height:1.35}
+
+  section{margin:44px 0 0}
+  h2{font:600 15px/1.3 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin:0 0 14px}
+  .filters{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 14px}
+  .chip{border:1px solid var(--line);background:transparent;color:var(--ink);border-radius:999px;padding:5px 13px;font:500 13px var(--sans);cursor:pointer}
+  .chip[aria-pressed="true"]{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+  .chip:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+  .tablewrap{overflow-x:auto;border:1px solid var(--line);background:var(--panel)}
+  table{border-collapse:collapse;width:100%;min-width:720px}
+  caption{text-align:left;color:var(--muted);font-size:13px;padding:12px 16px;border-bottom:1px solid var(--line)}
+  th,td{text-align:left;padding:12px 16px;border-bottom:1px solid var(--line);vertical-align:middle}
+  tbody tr:last-child td{border-bottom:0}
+  thead th{font:600 11px/1.3 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted);position:sticky;top:0;background:var(--panel)}
+  th.num,td.num{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums}
+  .model{font-weight:600}
+  .vendor{display:inline-block;font:500 11px var(--mono);color:var(--muted);border:1px solid var(--line);border-radius:4px;padding:1px 6px;margin-left:8px;vertical-align:1px}
+  .lift{display:flex;align-items:center;gap:10px;min-width:190px}
+  .track{flex:1;height:8px;background:var(--bar-soft);border-radius:2px;overflow:hidden}
+  .fill{display:block;height:100%;background:var(--bar);border-radius:2px}
+  .lift b{font:600 14px var(--mono);min-width:52px;text-align:right}
+  .note{font-size:12px;color:var(--muted);font-family:var(--mono)}
+  .floor{color:var(--warn);font-weight:600}
+
+  .findings{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}
+  .card{background:var(--panel);border:1px solid var(--line);padding:18px 18px 16px}
+  .card h3{margin:0 0 8px;font:600 16px/1.35 var(--sans)}
+  .card p{margin:0;font-size:14.5px;color:var(--muted)}
+  .card .k{font-family:var(--mono);color:var(--ink);font-weight:600}
+
+  .method{display:grid;grid-template-columns:1.15fr .85fr;gap:24px;align-items:start}
+  .method ol{margin:0;padding-left:20px}
+  .method li{margin:0 0 8px}
+  pre{margin:0;background:var(--panel);border:1px solid var(--line);padding:14px 16px;overflow-x:auto;font:13px/1.6 var(--mono)}
+  .caveat{border-left:3px solid var(--bar);background:var(--panel);padding:16px 18px}
+  .caveat p{margin:0 0 8px}
+  .caveat p:last-child{margin:0}
+  .small{font-size:13.5px;color:var(--muted)}
+  footer{margin-top:56px;padding-top:20px;border-top:1px solid var(--line);display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;font-size:13.5px;color:var(--muted)}
+  .totop{font-family:var(--mono);font-size:12px}
+  @media (max-width:820px){
+    .facts{grid-template-columns:repeat(2,minmax(0,1fr))}
+    .findings{grid-template-columns:1fr}
+    .method{grid-template-columns:1fr}
+    .hide-sm{display:none}
+    table{min-width:545px}
+    th,td{padding:10px 12px}
+    .model{font-size:14px}
+    .vendor{margin-left:5px;padding:1px 5px;font-size:10px}
+    .lift{min-width:140px;gap:8px}
+    .lift b{min-width:42px;font-size:13px}
+  }
+  @media (prefers-reduced-motion: reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="top">
+    <div class="brand">agent-evals · leaderboard</div>
+    <button class="lang" id="langBtn" type="button" aria-pressed="false">中文</button>
+  </div>
+
+  <header class="hero">
+    <h1 data-en="Does adding a skill actually help?" data-zh="给 Agent 塞 Skill，到底有没有用？">Does adding a skill actually help?</h1>
+    <p class="dek" data-en="Same 8 tasks. Same locked ruler. 11 models from 5 vendors. Deterministic regex grading — no LLM judge, no vibes." data-zh="同一套 8 个任务、同一把锁定的尺子、5 家厂商 11 个模型。全部用确定性正则判分——没有 LLM 当裁判，也不靠感觉。">Same 8 tasks. Same locked ruler. 11 models from 5 vendors. Deterministic regex grading — no LLM judge, no vibes.</p>
+
+    <div class="facts">
+      <div class="fact"><b>11</b><span data-en="models measured" data-zh="被测模型">models measured</span></div>
+      <div class="fact"><b>+4~+75</b><span data-en="lift, percentage points" data-zh="提升，百分点">lift, percentage points</span></div>
+      <div class="fact"><b>24</b><span data-en="calls per arm" data-zh="每条臂的调用数">calls per arm</span></div>
+      <div class="fact"><b>0</b><span data-en="LLM judges used" data-zh="使用 LLM 裁判">LLM judges used</span></div>
+      <div class="fact"><b>n=24</b><span data-en="directional, not precise" data-zh="方向性证据，非精确值">directional, not precise</span></div>
+    </div>
+  </header>
+
+  <section aria-labelledby="board-h">
+    <h2 id="board-h" data-en="The board" data-zh="榜单">The board</h2>
+    <div class="filters" role="group" aria-label="Filter by vendor">
+      <button class="chip" type="button" data-vendor="all" aria-pressed="true">All</button>
+      <button class="chip" type="button" data-vendor="DeepSeek" aria-pressed="false">DeepSeek</button>
+      <button class="chip" type="button" data-vendor="Zhipu" aria-pressed="false">Zhipu</button>
+      <button class="chip" type="button" data-vendor="MiMo" aria-pressed="false">MiMo</button>
+      <button class="chip" type="button" data-vendor="Alibaba" aria-pressed="false">Alibaba</button>
+      <button class="chip" type="button" data-vendor="StepFun" aria-pressed="false">StepFun</button>
+    </div>
+
+    <div class="tablewrap">
+      <table id="board">
+        <caption data-en="Locked v2+v3 ruler · 8 tasks × 3 trials × 2 arms · temperature=0 · AND-gate scoring · sorted by lift" data-zh="锁定的 v2+v3 尺子 · 8 任务 × 3 次 × 2 臂 · temperature=0 · AND-gate 判分 · 按 lift 排序">Locked v2+v3 ruler · 8 tasks × 3 trials × 2 arms · temperature=0 · AND-gate scoring · sorted by lift</caption>
+        <thead>
+          <tr>
+            <th scope="col" data-en="Model" data-zh="模型">Model</th>
+            <th scope="col" class="num" data-en="Bare floor" data-zh="裸答下限">Bare floor</th>
+            <th scope="col" class="num" data-en="With skill" data-zh="注入技能">With skill</th>
+            <th scope="col" data-en="Lift" data-zh="提升">Lift</th>
+            <th scope="col" class="hide-sm" data-en="Thinking config" data-zh="思考配置">Thinking config</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr data-vendor="Zhipu">
+            <td><span class="model">glm-5.3</span><span class="vendor">Zhipu</span></td>
+            <td class="num">13% <span class="note">3/24</span></td>
+            <td class="num">88% <span class="note">21/24</span></td>
+            <td><div class="lift"><span class="track"><span class="fill" style="width:100%"></span></span><b>+75</b></div></td>
+            <td class="hide-sm"><span class="note">reasoning_effort=low</span></td>
+          </tr>
+          <tr data-vendor="DeepSeek">
+            <td><span class="model">deepseek-reasoner (R1)</span><span class="vendor">DeepSeek</span></td>
+            <td class="num">13% <span class="note">3/24</span></td>
+            <td class="num">79% <span class="note">19/24</span></td>
+            <td><div class="lift"><span class="track"><span class="fill" style="width:89.3%"></span></span><b>+67</b></div></td>
+            <td class="hide-sm"><span class="note">native</span></td>
+          </tr>
+          <tr data-vendor="MiMo">
+            <td><span class="model">mimo-v2.6-pro</span><span class="vendor">MiMo</span></td>
+            <td class="num">29% <span class="note">7/24</span></td>
+            <td class="num">96% <span class="note">23/24</span></td>
+            <td><div class="lift"><span class="track"><span class="fill" style="width:89.3%"></span></span><b>+67</b></div></td>
+            <td class="hide-sm"><span class="note">thinking:disabled</span></td>
+          </tr>
+          <tr data-vendor="MiMo">
+            <td><span class="model">mimo-v2.6-flash</span><span class="vendor">MiMo</span></td>
+            <td class="num">17% <span class="note">4/24</span></td>
+            <td class="num">79% <span class="note">19/24</span></td>
+            <td><div class="lift"><span class="track"><span class="fill" style="width:84%"></span></span><b>+63</b></div></td>
+            <td class="hide-sm"><span class="note">thinking:disabled</span></td>
+          </tr>
+          <tr data-vendor="StepFun">
+            <td><span class="model">step-5-preview</span><span class="vendor">StepFun</span></td>
+            <td class="num">21% <span class="note">5/24</span></td>
+            <td class="num">83% <span class="note">20/24</span></td>
+            <td><div class="lift"><span class="track"><span class="fill" style="width:84%"></span></span><b>+63</b></div></td>
+            <td class="hide-sm"><span class="note">native</span></td>
+          </tr>
+          <tr data-vendor="DeepSeek">
+            <td><span class="model">deepseek-chat</span><span class="vendor">DeepSeek</span></td>
+            <td class="num">29% <span class="note">7/24</span></td>
+            <td class="num">88% <span class="note">21/24</span></td>
+            <td><div class="lift"><span class="track"><span class="fill" style="width:77.3%"></span></span><b>+58</b></div></td>
+            <td class="hide-sm"><span class="note">native</span></td>
+          </tr>
+          <tr data-vendor="Zhipu">
+            <td><span class="model">glm-4-plus</span><span class="vendor">Zhipu</span></td>
+            <td class="num">8% <span class="note">2/24</span></td>
+            <td class="num">67% <span class="note">16/24</span></td>
+            <td><div class="lift"><span class="track"><span class="fill" style="width:77.3%"></span></span><b>+58</b></div></td>
+            <td class="hide-sm"><span class="note">native</span></td>
+          </tr>
+          <tr data-vendor="DeepSeek">
+            <td><span class="model">deepseek-flash</span><span class="vendor">DeepSeek</span></td>
+            <td class="num">36% <span class="note">8/22</span></td>
+            <td class="num">91% <span class="note">21/23</span></td>
+            <td><div class="lift"><span class="track"><span class="fill" style="width:73.3%"></span></span><b>+55</b></div></td>
+            <td class="hide-sm"><span class="note">native</span></td>
+          </tr>
+          <tr data-vendor="Alibaba">
+            <td><span class="model">qwen3.8-flash</span><span class="vendor">Alibaba</span></td>
+            <td class="num">29% <span class="note">7/24</span></td>
+            <td class="num">75% <span class="note">18/24</span></td>
+            <td><div class="lift"><span class="track"><span class="fill" style="width:61.3%"></span></span><b>+46</b></div></td>
+            <td class="hide-sm"><span class="note">reasoning_effort=low</span></td>
+          </tr>
+          <tr data-vendor="Alibaba">
+            <td><span class="model">qwen3.8-max</span><span class="vendor">Alibaba</span></td>
+            <td class="num">25% <span class="note">6/24</span></td>
+            <td class="num">63% <span class="note">15/24</span></td>
+            <td><div class="lift"><span class="track"><span class="fill" style="width:50.7%"></span></span><b>+38</b></div></td>
+            <td class="hide-sm"><span class="note">reasoning_effort=low</span></td>
+          </tr>
+          <tr data-vendor="Zhipu">
+            <td><span class="model">glm-4-flash</span><span class="vendor">Zhipu</span></td>
+            <td class="num floor">13% <span class="note">3/24</span></td>
+            <td class="num">17% <span class="note">4/24</span></td>
+            <td><div class="lift"><span class="track"><span class="fill" style="width:5.3%"></span></span><b>+4</b></div></td>
+            <td class="hide-sm"><span class="note">native — reported floor</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="small" style="margin-top:10px" data-en="Percentages are rounded from the raw counts shown. deepseek-flash has 22/23 valid calls per arm (three transient upstream drops excluded from the denominator, as in every row)." data-zh="百分比由后面的原始计数四舍五入；deepseek-flash 每条臂有效调用为 22/23（3 次上游瞬断被排除，与所有行的处理一致）。">Percentages are rounded from the raw counts shown. deepseek-flash has 22/23 valid calls per arm (three transient upstream drops excluded from the denominator, as in every row).</p>
+  </section>
+
+  <section aria-labelledby="find-h">
+    <h2 id="find-h" data-en="What the board says" data-zh="这张榜在说什么">What the board says</h2>
+    <div class="findings">
+      <article class="card">
+        <h3 data-en="Lift tracks the bare floor, not the tier" data-zh="lift 跟的是裸答下限，不是档位">Lift tracks the bare floor, not the tier</h3>
+        <p data-en="The widest gaps sit on the lowest floors (glm-5.3 13% → +75; R1 13% → +67). The narrowest sits on the highest (qwen3.8-max 25% → +38). A flagship can still floor low: step-5-preview floors 21% and lifts +63." data-zh="最宽的提升出现在最低的下限上（glm-5.3 13% → +75；R1 13% → +67），最窄的出现在最高的下限上（qwen3.8-max 25% → +38）。旗舰也可能下限很低：step-5-preview 下限 21%，提升 +63。">The widest gaps sit on the lowest floors (glm-5.3 13% → +75; R1 13% → +67). The narrowest sits on the highest (qwen3.8-max 25% → +38). A flagship can still floor low: step-5-preview floors 21% and lifts +63.</p>
+      </article>
+      <article class="card">
+        <h3 data-en="“Flash” means nothing across brands" data-zh="“flash” 这个档位名，跨品牌不可比">“Flash” means nothing across brands</h3>
+        <p data-en="Same skill, same criteria: glm-4-flash lifts +4, mimo-v2.6-flash lifts +63. Both are flash tiers. Tier names are marketing, not a capability contract." data-zh="同一颗技能、同一套判据：glm-4-flash 只 +4，mimo-v2.6-flash 有 +63。两个都叫 flash。档位名是市场语言，不是能力契约。">Same skill, same criteria: glm-4-flash lifts +4, mimo-v2.6-flash lifts +63. Both are flash tiers. Tier names are marketing, not a capability contract.</p>
+      </article>
+      <article class="card">
+        <h3 data-en="Stronger models do not make the skill redundant" data-zh="更强的模型，并没有让技能变得多余">Stronger models do not make the skill redundant</h3>
+        <p data-en="If capability absorbed the skill, lift would compress toward zero as models get stronger. It does not: every current-gen row is still +38 or higher, and most sit at +55 to +75. The ceiling effect is local — one easy task saturates both arms, the domain tasks still miss at least one skill-unique criterion." data-zh="如果模型能力真的吸收了技能，越强的模型 lift 应该越接近 0。但没有：当前每一行仍在 +38 以上，多数在 +55~+75。天花板效应是局部的——一个简单任务两臂都满分，领域任务仍至少漏掉一条技能独有的判据。">If capability absorbed the skill, lift would compress toward zero as models get stronger. It does not: every current-gen row is still +38 or higher, and most sit at +55 to +75. The ceiling effect is local — one easy task saturates both arms, the domain tasks still miss at least one skill-unique criterion.</p>
+      </article>
+    </div>
+  </section>
+
+  <section aria-labelledby="method-h">
+    <h2 id="method-h" data-en="How it is measured" data-zh="怎么测的">How it is measured</h2>
+    <div class="method">
+      <ol>
+        <li data-en="8 tasks bound to 7 self-authored skills (MIT). Control arm gets the task only; treated arm gets the skill body injected before the task." data-zh="8 个任务绑定 7 颗自写技能（MIT）。control 臂只给任务；treated 臂在任务前注入技能正文。">8 tasks bound to 7 self-authored skills (MIT). Control arm gets the task only; treated arm gets the skill body injected before the task.</li>
+        <li data-en="3 trials × 2 arms per task = 24 calls per arm, temperature=0." data-zh="每任务 3 次 × 2 臂 = 每条臂 24 次调用，temperature=0。">3 trials × 2 arms per task = 24 calls per arm, temperature=0.</li>
+        <li data-en="Each task carries 1–3 regex criteria; a trial passes only if all of them hit (AND-gate). No model is used to score another model." data-zh="每个任务带 1–3 条正则判据；一次 trial 必须全部命中才算通过（AND-gate）。没有任何模型被用来给另一个模型打分。">Each task carries 1–3 regex criteria; a trial passes only if all of them hit (AND-gate). No model is used to score another model.</li>
+        <li data-en="lift = treated − control, in percentage points. n=24 is small: read it as directional evidence, not a precise effect size." data-zh="lift = treated − control，单位百分点。n=24 很小：请当作方向性证据，不要当精确效应量。">lift = treated − control, in percentage points. n=24 is small: read it as directional evidence, not a precise effect size.</li>
+      </ol>
+      <div>
+        <pre><code># reproduce one row (any OpenAI-compatible endpoint)
+T2_BASE_URL=https://api.example.com/v1 \
+T2_API_KEY=sk-... \
+T2_MODEL=your-model \
+node t2/smoke-ab.mjs
+
+# zero-cost check first: the ruler can tell
+# good answers from bad, without any API call
+node t2/smoke-ab.mjs --dry</code></pre>
+      </div>
+    </div>
+  </section>
+
+  <section aria-labelledby="caveat-h">
+    <h2 id="caveat-h" data-en="What this board is not" data-zh="这张榜不是什么">What this board is not</h2>
+    <div class="caveat">
+      <p data-en="<b>Not a model ranking.</b> A low bare floor is not “a bad model” — across 8 narrow tasks, the floor measures how well a model happens to land on these specific criteria. That is not a clean proxy for general capability." data-zh="<b>不是模型排名。</b>裸答下限低不等于“模型差”——在这 8 个窄任务上，下限只说明模型恰好命中这些具体判据的程度，不是通用能力的干净代理。"><b>Not a model ranking.</b> A low bare floor is not “a bad model” — across 8 narrow tasks, the floor measures how well a model happens to land on these specific criteria. That is not a clean proxy for general capability.</p>
+      <p data-en="<b>Not an activation study.</b> The treated arm injects the skill body directly. Real harnesses load only metadata and let the model decide whether to activate a skill — this board measures the ceiling of “body present in context”, not the activation rate." data-zh="<b>不是激活率研究。</b>treated 臂直接注入技能正文。真实 harness 只加载元数据，由模型自己决定要不要激活技能——这张榜测的是“正文已在上下文里”的上限，不是激活率。"><b>Not an activation study.</b> The treated arm injects the skill body directly. Real harnesses load only metadata and let the model decide whether to activate a skill — this board measures the ceiling of “body present in context”, not the activation rate.</p>
+      <p data-en="<b>Not free of deviations.</b> Some reasoning models blew the harness’s 60 s guard at default thinking and were run at a reduced setting; those rows say so. Their floor is a property of that setting, not native-max capability." data-zh="<b>不是没有偏离。</b>部分推理模型在默认思考下超过 60 秒保护阈值，改用了降低的设置；对应行已注明。它们的下限是那个设置的性质，不是原生最大能力。"><b>Not free of deviations.</b> Some reasoning models blew the harness’s 60 s guard at default thinking and were run at a reduced setting; those rows say so. Their floor is a property of that setting, not native-max capability.</p>
+    </div>
+  </section>
+
+  <footer>
+    <div>
+      <a href="https://github.com/kumu314/agent-evals">github.com/kumu314/agent-evals</a> ·
+      <a href="https://github.com/kumu314/agent-evals/blob/main/docs/t2-results.md">full evidence trail</a> ·
+      <a href="https://github.com/kumu314/agent-evals/blob/main/README.zh-CN.md">中文 README</a>
+    </div>
+    <div class="totop">v0.3.0 · updated 2026-10-19 · <a href="#top">↑ top</a></div>
+  </footer>
+
+</div>
+
+<script>
+(function(){
+  var btn = document.getElementById('langBtn');
+  var zh = false;
+  var nodes = document.querySelectorAll('[data-en]');
+  btn.addEventListener('click', function(){
+    zh = !zh;
+    nodes.forEach(function(el){
+      var v = el.getAttribute(zh ? 'data-zh' : 'data-en');
+      if (v !== null) el.innerHTML = v;
+    });
+    document.documentElement.lang = zh ? 'zh-CN' : 'en';
+    btn.textContent = zh ? 'EN' : '中文';
+    btn.setAttribute('aria-pressed', String(zh));
+  });
+
+  var chips = document.querySelectorAll('.chip');
+  var rows = document.querySelectorAll('#board tbody tr');
+  chips.forEach(function(chip){
+    chip.addEventListener('click', function(){
+      chips.forEach(function(c){ c.setAttribute('aria-pressed', String(c === chip)); });
+      var v = chip.getAttribute('data-vendor');
+      rows.forEach(function(row){
+        row.style.display = (v === 'all' || row.getAttribute('data-vendor') === v) ? '' : 'none';
+      });
+    });
+  });
+})();
+</script>
+</body>
+</html>

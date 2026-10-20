@@ -83,6 +83,8 @@ These three are not original; sources are in [fleet-eval/research/](fleet-eval/r
 
 t2 is a **model-tier selection tool**, not a "are skills universally effective" tool. The question it answers is: "inject this skill into a given model tier — does it flip that tier from FAIL to PASS on a task?" That answer **depends heavily on the model's capability ceiling**.
 
+**Injection is not activation.** The treated arm puts the skill body directly in context. Real harnesses load only a skill's metadata and let the model decide whether to activate it. Every number here is therefore an upper bound on what a skill can buy, not the activation rate you will see in production.
+
 ### How to read every number below
 
 Every row shares one methodology, stated once here instead of repeated under each model:

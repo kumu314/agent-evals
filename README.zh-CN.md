@@ -11,6 +11,8 @@
 [![version](https://img.shields.io/badge/version-0.3.0-lightgrey.svg)](CHANGELOG.md)
 [![models measured](https://img.shields.io/badge/models%20measured-11-8ab4f8.svg)](docs/t2-results.md)
 
+**在线榜单：** <https://kumu314.github.io/agent-evals/>
+
 > **一句话结论** — 在一把锁定的确定性 8 任务 A/B 尺子（`temperature=0`、AND 门判分）上，注入一条写得好的 skill 能抬升模型通过率。**11 个模型**的抬升跨度为 **+4 ~ +75 个百分点**——其中 10 个越过 +38，唯一的能力下限是 glm-4-flash。没有 LLM 裁判、不靠感觉：这里每个数字都是一条可重跑的断言。
 
 **适合谁：** 要给自己的 agent 技能或内容流水线加一道"会响亮且可复现地报红"回归闸的团队——三套件里有两套零 API 成本即可跑。**不适合谁：** 想找一套拿 LLM 当裁判打分的量表的人——本仓库刻意不这么做。

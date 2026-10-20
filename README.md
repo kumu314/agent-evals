@@ -11,6 +11,8 @@ English | [中文](README.zh-CN.md)
 [![version](https://img.shields.io/badge/version-0.3.0-lightgrey.svg)](CHANGELOG.md)
 [![models measured](https://img.shields.io/badge/models%20measured-11-8ab4f8.svg)](docs/t2-results.md)
 
+**Live leaderboard:** <https://kumu314.github.io/agent-evals/>
+
 > **TL;DR** — Injecting a well-written skill lifts a model's pass rate on a locked, deterministic 8-task A/B harness (`temperature=0`, AND-gate grading). Across **11 models** the lift spans **+4 ~ +75 percentage points** — 10 of them clear +38; the lone floor is glm-4-flash. No LLM judge, no vibes: every number here is a re-runnable assertion.
 
 **Who this is for:** teams shipping agent skills or content pipelines that need a regression gate which fails loudly and reproducibly — two of the three suites run at zero API cost. **Who it is not for:** anyone looking for an LLM-as-judge scoring rubric; this repo deliberately avoids one.

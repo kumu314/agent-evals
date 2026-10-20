@@ -93,7 +93,7 @@ Every row shares one methodology, stated once here instead of repeated under eac
 
 - **One locked ruler** — 8 tasks x 3 trials x 2 arms = 24 calls per arm, `temperature=0`, deterministic regex grading. Scoring is an **AND-gate**: a trial passes only if it hits *all* of that task's criteria.
 - **`lift` = treated - control**, in percentage points. It is **directional evidence, not a precise effect size** — at n=24 single-run variance dominates.
-- **Thinking config is a real column, not noise.** Some reasoning models blow past the harness's 60 s guard at default thinking, so they are run at a reduced setting (`reasoning_effort=low` / `thinking:disabled`); their floor is a property of that setting, not native-max capability.
+- **Thinking config is a real column, not noise.** Some reasoning models blow past the harness's 60 s guard at default thinking, so they are run at a reduced setting (`reasoning_effort=low` / `thinking:disabled`); their floor is a property of that setting, not native-max capability. The per-model reasons for each reduced / disabled setting are recorded in [docs/t2-results.md](docs/t2-results.md).
 
 ### Headline results (locked v2+v3 ruler)
 

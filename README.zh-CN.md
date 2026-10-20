@@ -93,7 +93,7 @@ t2 是**模型档位选型工具**，不是"技能通用有效性"工具。它�
 
 - **同一把锁定尺子**——8 任务 × 3 trials × 2 臂 = 每臂 24 次，`temperature=0`，确定性正则判分。判分是 **AND 门**：一次试必须命中该任务的**全部**判据才算 PASS。
 - **`lift` = treated - control**，单位百分点。它是**方向性证据，不是精确效应量**——n=24 下单次运行方差主导。
-- **思考配置是一列真实信息，不是噪声。** 部分推理模型默认思考会撞破 harness 的 60s 超时，故以降级档跑（`reasoning_effort=low` / `thinking:disabled`）；其裸答下限是该档位的特性，不等于 native-max 能力。
+- **思考配置是一列真实信息，不是噪声。** 部分推理模型默认思考会撞破 harness 的 60s 超时，故以降级档跑（`reasoning_effort=low` / `thinking:disabled`）；其裸答下限是该档位的特性，不等于 native-max 能力。降级 / 关闭思考的逐型号原因，记在 [docs/t2-results.zh-CN.md](docs/t2-results.zh-CN.md)。
 
 ### 读数总览（锁定的 v2+v3 尺子）
 

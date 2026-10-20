@@ -29,8 +29,11 @@
   a:hover{text-decoration-style:wavy}
   .top{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
   .brand{font:600 13px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
-  .lang{border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:999px;padding:6px 14px;font:500 13px var(--sans);cursor:pointer}
-  .lang:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+  .lang{display:inline-flex;border:1px solid var(--line);border-radius:999px;background:var(--panel);overflow:hidden}
+  .langbtn{border:0;background:transparent;color:var(--muted);padding:7px 15px;font:600 13px var(--sans);cursor:pointer}
+  .langbtn+.langbtn{border-left:1px solid var(--line)}
+  .langbtn[aria-pressed="true"]{background:var(--ink);color:var(--paper)}
+  .langbtn:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 
   header.hero{margin:44px 0 0;border-bottom:1px solid var(--line);padding-bottom:28px}
   h1{font:600 clamp(30px,5vw,46px)/1.12 var(--serif);margin:0 0 10px;letter-spacing:-.01em}
@@ -99,7 +102,10 @@
 
   <div class="top">
     <div class="brand">agent-evals · leaderboard</div>
-    <button class="lang" id="langBtn" type="button" aria-pressed="false">中文</button>
+    <div class="lang" role="group" aria-label="Language">
+      <button class="langbtn" id="langEn" type="button" aria-pressed="true">English</button>
+      <button class="langbtn" id="langZh" type="button" aria-pressed="false">中文</button>
+    </div>
   </div>
 
   <header class="hero">
@@ -221,6 +227,7 @@
       </table>
     </div>
     <p class="small" style="margin-top:10px" data-en="Percentages are rounded from the raw counts shown. deepseek-flash has 22/23 valid calls per arm (three transient upstream drops excluded from the denominator, as in every row)." data-zh="百分比由后面的原始计数四舍五入；deepseek-flash 每条臂有效调用为 22/23（3 次上游瞬断被排除，与所有行的处理一致）。">Percentages are rounded from the raw counts shown. deepseek-flash has 22/23 valid calls per arm (three transient upstream drops excluded from the denominator, as in every row).</p>
+    <p class="small" style="margin-top:6px" data-en="Why a row ran at a reduced or disabled thinking setting - the per-model reasons are recorded in docs/t2-results.md." data-zh="某行为什么用降级或关闭的思考设置 - 逐型号原因记在 docs/t2-results.md。">Why a row ran at a reduced or disabled thinking setting - the per-model reasons are recorded in docs/t2-results.md.</p>
   </section>
 
   <section aria-labelledby="find-h">
@@ -286,19 +293,20 @@ node t2/smoke-ab.mjs --dry</code></pre>
 
 <script>
 (function(){
-  var btn = document.getElementById('langBtn');
-  var zh = false;
+  var enBtn = document.getElementById('langEn');
+  var zhBtn = document.getElementById('langZh');
   var nodes = document.querySelectorAll('[data-en]');
-  btn.addEventListener('click', function(){
-    zh = !zh;
+  function setLang(zh){
     nodes.forEach(function(el){
       var v = el.getAttribute(zh ? 'data-zh' : 'data-en');
       if (v !== null) el.innerHTML = v;
     });
     document.documentElement.lang = zh ? 'zh-CN' : 'en';
-    btn.textContent = zh ? 'EN' : '中文';
-    btn.setAttribute('aria-pressed', String(zh));
-  });
+    enBtn.setAttribute('aria-pressed', String(!zh));
+    zhBtn.setAttribute('aria-pressed', String(zh));
+  }
+  enBtn.addEventListener('click', function(){ setLang(false); });
+  zhBtn.addEventListener('click', function(){ setLang(true); });
 
   var chips = document.querySelectorAll('.chip');
   var rows = document.querySelectorAll('#board tbody tr');

@@ -238,7 +238,8 @@ async function askOnce(system, user) {
     throw new Error('空 content；finish_reason=' + j.choices?.[0]?.finish_reason +
       '；raw=' + JSON.stringify(j).slice(0, 600));
   }
-  return content;
+  const u = j.usage || {};
+  return { content, pt: Number.isFinite(u.prompt_tokens) ? u.prompt_tokens : null, ct: Number.isFinite(u.completion_tokens) ? u.completion_tokens : null };
 }
 
 // 免费档上游常 503/限流 —— 瞬时错误退避重试，重试耗尽才当失败
@@ -319,7 +320,7 @@ async function run() {
   // 每个 cell 独立产出其 row（形状与串行版逐字节一致）；DRY 为纯同步，不触网。
   const runCell = async ({ task, arm, t, skillText }) => {
     let ans, err = null;
-    if (DRY) ans = DRY_ANSWERS[task.id][arm];
+    if (DRY) ans = { content: DRY_ANSWERS[task.id][arm], pt: null, ct: null };
     else {
       try { ans = await ask(systemFor(arm, task.skill, skillText), task.prompt); }
       catch (e) { err = e; }
@@ -327,11 +328,11 @@ async function run() {
     if (err) {
       const kind = err.toolCall ? 'TOOLCALL' : 'ERROR';
       if (DUMP) console.log('\n===== ' + task.id + ' / ' + arm + ' / t' + t + ' ===== [' + kind + '] ' + err.message.slice(0, 120) + '\n');
-      return { task: task.id, arm, trial: t, passed: false, hits: [], chars: 0, err: kind, msg: err.message.slice(0, 90) };
+      return { task: task.id, arm, trial: t, passed: false, hits: [], chars: 0, pt: null, ct: null, err: kind, msg: err.message.slice(0, 90) };
     }
-    const s = score(ans, task);
-    if (DUMP) console.log('\n===== ' + task.id + ' / ' + arm + ' / t' + t + ' =====\n' + ans + '\n');
-    return { task: task.id, arm, trial: t, passed: s.passed, hits: s.hits, chars: ans.length };
+    const s = score(ans.content, task);
+    if (DUMP) console.log('\n===== ' + task.id + ' / ' + arm + ' / t' + t + ' =====\n' + ans.content + '\n');
+    return { task: task.id, arm, trial: t, passed: s.passed, hits: s.hits, chars: ans.content.length, pt: ans.pt, ct: ans.ct };
   };
 
   // 并发跑（上限 K，默认 4，国内 API 有 RPM 限制；瞬时 503/429 已由 ask() 退避重试兜底）。
@@ -366,6 +367,29 @@ async function run() {
   const nOf = (a) => valid(a).length;
   const ci = (a) => { const [lo, hi] = wilson(kOf(a), nOf(a)); return `[${Math.round(lo * 100)},${Math.round(hi * 100)}]`; };
   console.log(`control pass = ${(c * 100).toFixed(0)}% ${ci('control')}   treated pass = ${(t * 100).toFixed(0)}% ${ci('treated')}   lift = ${((t - c) * 100).toFixed(0)} 个百分点`);
+  // ---- token 成本采集（非流式响应里的 usage；DRY 或 provider 未回 usage 则显式标 n/a，绝不编 0）----
+  const tokCells = (arm) => valid(arm).filter((r) => r.pt != null && r.ct != null).map((r) => r.pt + r.ct);
+  const ctT = tokCells('control'), ttT = tokCells('treated');
+  console.log('-'.repeat(72));
+  if (ctT.length === 0 || ttT.length === 0) {
+    console.log('token 成本 = n/a（' + (DRY ? 'DRY 零调用' : '本轮 provider 未返回 usage 字段') + '，不编造读数）');
+  } else {
+    const avg = (a) => a.reduce((s, x) => s + x, 0) / a.length;
+    const pc = avg(ctT), ptv = avg(ttT);
+    console.log('单次调用 token（实测）  control~' + Math.round(pc) + '  treated~' + Math.round(ptv) + '  注入净增~' + Math.round(ptv - pc));
+    const toPass = (perCall, pr) => (pr > 0 ? perCall / pr : null); // E[答对一次的总token]=平均每次/通过率，前提：重试到对且各次独立
+    const tpC = toPass(pc, c), tpT = toPass(ptv, t);
+    if (tpC == null || tpT == null) {
+      console.log('答对一次的总 token（推导）  至少一臂本轮 0 通过，无法外推');
+    } else {
+      console.log('答对一次的总 token（推导·前提:重试到对且各次独立）  control~' + Math.round(tpC) + '  treated~' + Math.round(tpT) + '  ' + (tpT <= tpC ? '省 ' + Math.round((1 - tpT / tpC) * 100) + '%' : '多花 ' + Math.round(tpT - tpC)));
+      const extra = tpT - tpC;
+      const liftPP = Math.round((t - c) * 100);
+      console.log('增量性价比  ' + (extra <= 0
+        ? '更省 token 且 +' + liftPP + ' pp（无额外成本，看上一行节省%）'
+        : '+' + liftPP + ' pp / 多花 ' + Math.round(extra) + ' token ~ 每 1k token ' + ((liftPP / extra) * 1000).toFixed(1) + ' pp'));
+    }
+  }
   const anyErr = rows.some((r) => r.err);
   console.log(t - c > 0
     ? '=> 两臂可区分（管线有判别力）'

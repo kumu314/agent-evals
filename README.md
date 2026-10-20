@@ -115,7 +115,7 @@ All rows report 0 tool-calls; transient upstream disconnects are excluded from t
 
 ### What the fleet tells you
 
-- **The skill's gain is real and stays large.** Across every model that can parse it, lift runs **+38 ~ +75 pp** — and no model, flagship included, pushes it toward zero.
+- **The skill's gain is real and usually large.** Across the eleven tested models, lift runs **+4 ~ +75 pp**, with ten of eleven at +38 or higher. `glm-4-flash` (+4) is the lone weak row — the injection barely moved it, which is exactly why the next bullets say to test the specific model, not the tier.
 - **Lift tracks the bare-answer floor, not headline tier.** The widest gaps sit on the *lowest* floors (R1 13% -> +67, glm-5.3 13% -> +75); the narrowest on the *highest* (qwen3.8-max 25% -> +38). `step-5-preview` is a flagship yet floors low (21%) and so lifts wide (+63) — a model's floor is how well it happens to land on these specific criteria, not a clean proxy of its strength.
 - **Tier cannot be equated across brands.** Same skill, same criteria: `glm-4-flash` lifts +4 while `mimo-v2.6-flash` lifts +63 — test the specific model, not the tier name.
 - **Within a brand, tier gaps are steeper than across brands.** In zhipu alone, `glm-4-flash` (+4) -> `glm-4-plus` (+58): one swap moves the effect from 0 to +58.

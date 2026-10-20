@@ -23,3 +23,6 @@ __pycache__/
 
 # 变量未展开时误写进仓里的运行时垃圾目录（Windows 图标/视图缓存 .db 等，可再生，勿提交）
 %SystemDrive%/
+
+# 测试控制台转储（npm test 可再生，勿提交）
+_test_out.txt

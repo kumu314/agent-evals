@@ -28,6 +28,7 @@ const FILES = {
   readmeZh: 'README.zh-CN.md',
   detailEn: path.join('docs', 't2-results.md'),
   detailZh: path.join('docs', 't2-results.zh-CN.md'),
+  board: path.join('docs', 'index.html'),
 };
 
 // 归一化：剔除图片、链接 URL 目标（保留锚文本）、行内代码、HTML 注释——
@@ -83,8 +84,31 @@ for (const { summary, detail, name } of [
   if (missing.length) problems.push(`README(${name}) 有数字在明细中找不到出处：` + missing.join(', '));
 }
 
+// (3) 榜单页防漂移：docs/index.html 静态区（</style> 与 <script> 之间）里出现的每个评测
+//     数字（NN% 通过率 / +PP lift），必须能在明细里找到出处；剥离 style="..." 以排除 bar
+//     填充宽度（89.3% 等）这类非评测读数。改榜单数字却不同步明细 => fail-closed。
+{
+  const htmlPath = path.join(ROOT, FILES.board);
+  if (!fs.existsSync(htmlPath)) {
+    problems.push('docs/index.html 不存在，无法执行榜单页防漂移校验');
+  } else {
+    const html = fs.readFileSync(htmlPath, 'utf8');
+    const a0 = html.indexOf('</style>');
+    const a1 = html.indexOf('<script', a0 + 1);
+    let body = a0 >= 0 ? html.slice(a0 + 8, a1 >= 0 ? a1 : undefined) : '';
+    body = body.replace(/style\s*=\s*"[^"]*"/g, ' ').replace(/<!--[\s\S]*?-->/g, ' ');
+    const fpBoard = fingerprint(body);
+    if (fpBoard.size === 0) {
+      problems.push('docs/index.html 榜单区未提取到任何数据指纹（提取失败？拒绝静默放行）');
+    } else {
+      const miss = [...fpBoard.keys()].filter((x) => !fp.detailEn.has(x) && !fp.detailZh.has(x));
+      if (miss.length) problems.push('docs/index.html 有数字在明细中找不到出处：' + miss.join(', '));
+    }
+  }
+}
+
 if (problems.length === 0) {
-  console.log(`[guard] 双向 token 指纹守卫通过：README 数据指纹 ${fp.readmeEn.size} 种、明细 ${fp.detailEn.size} 种；中英镜像逐一相等，概要数字全部可溯源到明细。`);
+  console.log(`[guard] 双向 token 指纹守卫通过：README 数据指纹 ${fp.readmeEn.size} 种、明细 ${fp.detailEn.size} 种；中英镜像逐一相等，概要数字全部可溯源到明细；榜单页 docs/index.html 数字同样受溯源约束。`);
   process.exit(0);
 }
 console.error('[guard] 双向 token 指纹守卫失败（fail-closed）：');

@@ -87,6 +87,8 @@ t2 is a **model-tier selection tool**, not a "are skills universally effective" 
 
 **Injection is not activation.** The treated arm puts the skill body directly in context. Real harnesses load only a skill's metadata and let the model decide whether to activate it. Every number here is therefore an upper bound on what a skill can buy, not the activation rate you will see in production.
 
+**Scope of the tested skills.** All seven skills under test in t2 are verification-discipline / failure-forensics skills — each encodes one concrete, checkable procedure. Other genres (domain knowledge, creative work, style) are not measured here, so the lift below is evidence for this genre, not a claim that skills help in general.
+
 ### How to read every number below
 
 Every row shares one methodology, stated once here instead of repeated under each model:

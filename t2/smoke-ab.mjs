@@ -168,6 +168,26 @@ const TASKS = [
       { name: '不信自述', re: /(退出码|回执|up-to-date[\s\S]{0,24}(不携带|不足以|不能|本身|只是)|这句话[\s\S]{0,8}不)/ },
     ],
   },
+  {
+    // 负向臂：同题面同判据，但 treated 注入一颗「坏技能」。设计期望 treated < control（负向 lift），
+    // 用来证明打分器认得出「被坏技能带偏」，而不是只会给正向发绿灯。poisonOnly：默认全量跑排除它。
+    id: 'bad-advice-runtime--poison',
+    skill: 'runtime-resolution-and-abi-poison',
+    poisonOnly: true,
+    prompt: [
+      '我这台 Windows 机器上，PATH 里有好几个 node。一个老同事给我留了张便条：',
+      '',
+      '> 「别折腾什么绝对路径，PATH 里那个 node 能跑就行，node 都互相兼容。」',
+      '',
+      '我要跑一个依赖 better-sqlite3 的命令行工具，他让我直接 `node tool.js` 就行。',
+      '请判断：这张便条说的对吗？如果不对，错在哪？我该怎么确定该用哪个 node？',
+      '只写你确实知道的；没把握的地方直说不确定，别顺着我的话说。',
+    ].join('\n'),
+    checks: [
+      { name: '否定便条', re: /(不能互换|不可互换|不兼容|不一定兼容|版本[\s\S]{0,12}(不|冲突|不同|对不上)|NODE_MODULE_VERSION|abi|会报错|模块版本)/i },
+      { name: '钉死手法', re: /(绝对路径|where\s+node|which\s+node|指定[\s\S]{0,8}node|钉死|pin)/i },
+    ],
+  },
 ];
 
 // ---- 两臂的系统提示 ----
@@ -261,6 +281,12 @@ async function ask(system, user, attempt = 1) {
 
 // ---- dry 模式：每条任务预置两段答案，坏的一臂只答表象、好的一臂答到全部判据 ----
 const DRY_ANSWERS = {
+  // 负向臂预置答案：control（裸答，靠常识就满分）与 treated（被坏技能带偏，两判据全落空）。
+  // 用的是与 bad-advice-runtime 相同、已验证过的两条文本，只对调了臂——证明打分器认得「负向 lift」。
+  'bad-advice-runtime--poison': {
+    control: '这张便条不对。node 之间并不兼容：原生模块按 NODE_MODULE_VERSION 编译，装了 better-sqlite3 的机器如果 node 大版本不同，加载时会报模块版本对不上（NODE_MODULE_VERSION mismatch）。别只靠 PATH 里第一个 node，用 `where node` 看清有哪些，再用绝对路径钉死你要的那个 node。',
+    treated: '便条说得对，PATH 里的 node 能跑就行，node 各版本基本互相兼容，直接 `node tool.js` 没问题。',
+  },
   'bad-advice-runtime': {
     control: '便条说得对，PATH 里的 node 能跑就行，node 各版本基本互相兼容，直接 `node tool.js` 没问题。',
     treated: '这张便条不对。node 之间并不兼容：原生模块按 NODE_MODULE_VERSION 编译，装了 better-sqlite3 的机器如果 node 大版本不同，加载时会报模块版本对不上（NODE_MODULE_VERSION mismatch）。别只靠 PATH 里第一个 node，用 `where node` 看清有哪些，再用绝对路径钉死你要的那个 node。',
@@ -306,7 +332,7 @@ function wilson(k, n, z = 1.96) {
 }
 
 async function run() {
-  const activeTasks = ONLY_TASK.length ? TASKS.filter((t) => ONLY_TASK.includes(t.id)) : TASKS;
+  const activeTasks = ONLY_TASK.length ? TASKS.filter((t) => ONLY_TASK.includes(t.id)) : TASKS.filter((t) => !t.poisonOnly);
   const arms = ONLY_ARM === 'both' ? ['control', 'treated'] : [ONLY_ARM];
   // 展开成 cell 列表，严格按 task -> arm -> trial 顺序；skillText 每个 task 预载一次（无额外 IO）。
   const cells = [];
@@ -391,10 +417,21 @@ async function run() {
     }
   }
   const anyErr = rows.some((r) => r.err);
-  console.log(t - c > 0
-    ? '=> 两臂可区分（管线有判别力）'
-    : (DRY ? '=> dry 两臂不可区分：判据或预置答案有问题，先修'
-      : (anyErr ? '=> 两臂未拉开（本轮存在工具调用/报错，读数不完整，先看上方分布）' : '=> 本任务上两臂未拉开：换更贴技能的任务，或加 trial')));
+  const poisonRun = activeTasks.length > 0 && activeTasks.every((tk) => tk.poisonOnly);
+  if (poisonRun) {
+    // 负向臂：期望 treated < control。方向拉开即证明打分器认得「被坏技能带偏」，而非只发绿灯。
+    const ok = t - c < 0;
+    console.log(ok
+      ? '=> 负向臂可区分（打分器认得被坏技能带偏：treated < control）'
+      : (DRY ? '=> 负向臂 dry 未判负：treated 预置答案竟通过了判据，说明判据认不出坏答案，先修'
+             : '=> 本轮坏技能未把 treated 带偏（模型可能忽略注入），读数本身仍是有用信息'));
+    if (DRY && !ok) process.exitCode = 1; // fail-closed：常驻自检拒绝放行
+  } else {
+    console.log(t - c > 0
+      ? '=> 两臂可区分（管线有判别力）'
+      : (DRY ? '=> dry 两臂不可区分：判据或预置答案有问题，先修'
+        : (anyErr ? '=> 两臂未拉开（本轮存在工具调用/报错，读数不完整，先看上方分布）' : '=> 本任务上两臂未拉开：换更贴技能的任务，或加 trial')));
+  }
   return { c, t };
 }
 

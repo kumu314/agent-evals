@@ -20,6 +20,10 @@ const ONLY_TASK = (process.env.T2_TASK || '').split(',').map((s) => s.trim()).fi
 const ONLY_ARM = process.env.T2_ARM || 'both';
 const DUMP = process.env.T2_DUMP === '1';
 const DRY = process.argv.includes('--dry');
+// Provider temperature compatibility: default 0 preserves the A/B reproducibility anchor; some models (e.g. kimi-k2.6) only accept 1, set T2_TEMPERATURE=1 for those runs only.
+const TEMPERATURE = Number(process.env.T2_TEMPERATURE ?? 0);
+// Per-request response timeout (ms); default 60000. Some reasoning models (e.g. kimi-k3) exceed 60s at temp=1; raise via T2_TIMEOUT only for those runs.
+const RESP_TIMEOUT = Number(process.env.T2_TIMEOUT || 60000);
 
 // ---- 任务集：每条任务自带确定性判据（全部命中才算过）----
 // 设计原则：判据要落在「技能正文里有、裸模型答不到」的点上，否则两臂会撞天花板。
@@ -215,7 +219,7 @@ function score(answer, task) {
 async function askOnce(system, user) {
   // 上游会挂住不返回（实测 >150s 无响应），必须自带超时，否则整轮挂死
   const ctl = new AbortController();
-  const timer = setTimeout(() => ctl.abort(), 60000);
+  const timer = setTimeout(() => ctl.abort(), RESP_TIMEOUT);
   let r;
   try {
     r = await fetch(BASE.replace(/\/$/, '') + '/chat/completions', {
@@ -224,7 +228,7 @@ async function askOnce(system, user) {
       body: JSON.stringify({
         model: MODEL,
         messages: [ { role: 'system', content: system }, { role: 'user', content: user } ],
-        temperature: 0,
+        temperature: TEMPERATURE,
         // 混合思考模型（如 mimo-v2.6-flash）默认开思考：首 token 延迟高、单次可超 60s 撞上面的超时。
         // T2_DISABLE_THINKING=1 显式关闭（官方 OpenAI 兼容参数 thinking.type）；其他 provider 不带此参数，行为不变。
         ...(process.env.T2_DISABLE_THINKING === '1' ? { thinking: { type: 'disabled' } } : {}),

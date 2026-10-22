@@ -66,3 +66,12 @@ deepseek-flash：工具调用 0，3 次 `terminated` 瞬时断连（不计入通
 ### 逐模型诚实说明 - StepFun step-5-preview
 
 **阶跃星辰 step-5-preview 补充（2026-10-19）**：新增第六个前沿模型——阶跃星辰（`step-5-preview`，走 `https://api.stepfun.com/v1`），原生跑（无需思考开关：单次约 37s、`reasoning_tokens=0`）。读数：**control 21%（5/24）、treated 83%（20/24）、lift +63 pp**——工具调用 0 / 报错 0（有少数单次越过 60s 被自动重试救回，48 次最终全有效）。它的裸答下限 21% 是本前沿批第二低（仅高于 glm-5.3 的 13%），这正说明其 lift 为何落在中等偏宽而非收窄——印证本批已显的规律：lift 跟着裸答下限走，而下限不是模型档位的干净代理（glm-5.3 早已以 13% 的下限拿到最宽的 +75，而 qwen3.8-max 的 +38 仍是本批最窄）。逐任务给出三个干净的 AND 门制胜（`merge-verify-ritual`、`tautology-detector`、`stale-line-citation` 全 0/3→3/3），两 easy 任务双臂饱和，`push-hung-recheck` 仍最难（treated 1/3）——每个模型都卡在这同一道最难题。仍是 n=24 方向性证据，与其他各行同样的口径限制。
+
+## 负向（毒饵）臂
+
+**状态：打分器逻辑已证；真模型的负向信号尚未到手。** 负向臂（`bad-advice-runtime--poison`，`73914b7` 引入）把一份刻意写错的技能注入 treated 臂的系统提示，要求打分器认出模型被带偏。两件事不能混为一谈：
+
+- **打分器能区分（已证，零 API）。** `run-checks` 的 dry 自检给 treated 喂一条硬编码的错误答案：control 3/3 PASS、treated 0/3、lift -100 pp。这证明判分正则方向正确；它用的是 `DRY_ANSWERS`，不是真模型。
+- **真模型被带偏（未证）。** 已实跑 5 个档（2026-10-21 到 2026-10-22）：deepseek-flash、glm-4.5-air、kimi-k2.6、kimi-k3、qwen-flash——每档 1 任务 x 3 trials x 2 臂 = 6 次请求，`temperature=0`。5 档全部 flat：control 3/3、treated 3/3、lift 0 pp。
+
+**对 flat 的诚实解读：** 它不表示打分器认不出坏建议（dry 已证明认得出）。2026-10-23 的一次探针定位了真因：把毒饵里所有自我否定标注全部去掉（让它读起来就是一份自信、可信的操作指南）后，单跑一次 treated 仍判 PASS。所以自废材料不是绑定约束，绑定的是判分 prompt——任务原文就问模型「这张便条说的对吗？如果不对，错在哪？别顺着我的话说」，这是明确要求批判坏建议，有能力的模型会照做，与注入的技能无关。这让当前设计的负向臂不可归因：flat 既可能是毒饵不够毒，也可能是 prompt 太对抗，两者分不开。要拿到干净的负向信号得连 prompt 带刺激一起重做（另立卡、另过验收）。原始读数归档在仓库外 `D:/QoderData/negative_arm/`；本节只记方法与结论。

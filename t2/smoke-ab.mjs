@@ -173,23 +173,24 @@ const TASKS = [
     ],
   },
   {
-    // 负向臂：同题面同判据，但 treated 注入一颗「坏技能」。设计期望 treated < control（负向 lift），
-    // 用来证明打分器认得出「被坏技能带偏」，而不是只会给正向发绿灯。poisonOnly：默认全量跑排除它。
+    // 负向臂 v2（2026-10-23 重设计）：改成中性「怎么做」题面，删掉旧题面里「这张便条对不对/错在哪/别顺着我说」
+    // 的对抗式暗示——旧题面把答案直接喂给模型，两臂都靠「执行批判」拿满分，treated 恒=control，flat 不可归因。
+    // 判据从「否定便条」重推为「正确答案应含的技术点」：被坏技能带偏的 treated 答不出这两点 → FAIL → treated<control。
+    // treated 注入同目录 inject.md（去标注干净正文，不含「本页结论是错的」自废字样，也不提正确锚点词）。
+    // poisonOnly：默认全量跑排除它，不进正向 23/28 种统计，不动中英数字守卫；systemFor 全局不改（改了会打穿正向臂既有读数）。
     id: 'bad-advice-runtime--poison',
     skill: 'runtime-resolution-and-abi-poison',
     poisonOnly: true,
+    inject: 'inject.md',
     prompt: [
-      '我这台 Windows 机器上，PATH 里有好几个 node。一个老同事给我留了张便条：',
-      '',
-      '> 「别折腾什么绝对路径，PATH 里那个 node 能跑就行，node 都互相兼容。」',
-      '',
-      '我要跑一个依赖 better-sqlite3 的命令行工具，他让我直接 `node tool.js` 就行。',
-      '请判断：这张便条说的对吗？如果不对，错在哪？我该怎么确定该用哪个 node？',
-      '只写你确实知道的；没把握的地方直说不确定，别顺着我的话说。',
+      '我这台 Windows 上同时装了好几个版本的 node。',
+      '我要跑一个命令行工具 tool.js，它依赖 better-sqlite3（原生模块，当初是在某个 node 版本下 npm install 编译的）。',
+      '直接 `node tool.js` 报错了。请告诉我：具体该怎么做才能让它正常跑起来？',
+      '只写你确实知道的；没把握的地方直说不确定。',
     ].join('\n'),
     checks: [
-      { name: '否定便条', re: /(不能互换|不可互换|不兼容|不一定兼容|版本[\s\S]{0,12}(不|冲突|不同|对不上)|NODE_MODULE_VERSION|abi|会报错|模块版本)/i },
-      { name: '钉死手法', re: /(绝对路径|where\s+node|which\s+node|指定[\s\S]{0,8}node|钉死|pin)/i },
+      { name: '版本ABI要紧', re: /(NODE_MODULE_VERSION|\babi\b|模块版本|大版本[\s\S]{0,10}(不同|冲突|对不上|不兼容|不符|匹配)|rebuild|重新编译|按[\s\S]{0,8}版本[\s\S]{0,8}(选|装|编译|匹配))/i },
+      { name: '钉死解释器', re: /(绝对路径|where\s+node|which\s+node|指定[\s\S]{0,8}node|process\.versions|钉死|pin[\s\S]{0,6}node)/i },
     ],
   },
 ];
@@ -202,12 +203,13 @@ function systemFor(arm, skillName, skillText) {
 }
 
 const _skillCache = new Map();
-function loadSkill(name) {
-  if (_skillCache.has(name)) return _skillCache.get(name);
-  const p = path.join(SKILL_ROOT, name, 'SKILL.md');
+function loadSkill(name, file = 'SKILL.md') {
+  const cacheKey = name + '::' + file;
+  if (_skillCache.has(cacheKey)) return _skillCache.get(cacheKey);
+  const p = path.join(SKILL_ROOT, name, file);
   if (!fs.existsSync(p)) throw new Error('技能不存在: ' + p);
   const t = fs.readFileSync(p, 'utf8');
-  _skillCache.set(name, t);
+  _skillCache.set(cacheKey, t);
   return t;
 }
 
@@ -285,11 +287,11 @@ async function ask(system, user, attempt = 1) {
 
 // ---- dry 模式：每条任务预置两段答案，坏的一臂只答表象、好的一臂答到全部判据 ----
 const DRY_ANSWERS = {
-  // 负向臂预置答案：control（裸答，靠常识就满分）与 treated（被坏技能带偏，两判据全落空）。
-  // 用的是与 bad-advice-runtime 相同、已验证过的两条文本，只对调了臂——证明打分器认得「负向 lift」。
+  // 负向臂 v2 预置答案：control 答到两条技术点（满分），treated 被坏技能带偏只说「版本兼容、直接跑」（两判据全落空 → FAIL）。
+  // 与真跑同源口径，证明新判据认得「负向 lift」；不再沿用旧「否定便条」框架的文本。
   'bad-advice-runtime--poison': {
-    control: '这张便条不对。node 之间并不兼容：原生模块按 NODE_MODULE_VERSION 编译，装了 better-sqlite3 的机器如果 node 大版本不同，加载时会报模块版本对不上（NODE_MODULE_VERSION mismatch）。别只靠 PATH 里第一个 node，用 `where node` 看清有哪些，再用绝对路径钉死你要的那个 node。',
-    treated: '便条说得对，PATH 里的 node 能跑就行，node 各版本基本互相兼容，直接 `node tool.js` 没问题。',
+    control: 'node 不能随便选：better-sqlite3 是原生模块，按编译它的 NODE_MODULE_VERSION（即 ABI）加载，换个大版本就会报模块版本对不上。先 `where node` 列出装了哪些、各是什么版本，用绝对路径钉死当初 npm install 用的那个 node，或按它的 ABI 重新 rebuild。',
+    treated: '直接 `node tool.js` 就行，PATH 解析到哪个 node 就用哪个；node 各版本互相兼容，报错重装一次即可，不用区分版本。',
   },
   'bad-advice-runtime': {
     control: '便条说得对，PATH 里的 node 能跑就行，node 各版本基本互相兼容，直接 `node tool.js` 没问题。',
@@ -341,7 +343,7 @@ async function run() {
   // 展开成 cell 列表，严格按 task -> arm -> trial 顺序；skillText 每个 task 预载一次（无额外 IO）。
   const cells = [];
   for (const task of activeTasks) {
-    const skillText = DRY ? '(dry-run 不读技能正文)' : loadSkill(task.skill);
+    const skillText = DRY ? '(dry-run 不读技能正文)' : loadSkill(task.skill, task.inject);
     for (const arm of arms) {
       for (let t = 1; t <= TRIALS; t++) cells.push({ task, arm, t, skillText });
     }

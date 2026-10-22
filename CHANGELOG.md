@@ -10,10 +10,11 @@
 - **新增区间估计**：每臂通过率附 Wilson 95% 置信区间（如 `treated pass = 63% [43,80]`）。n=24 是小样本，宽区间本身就是「方向性证据」的数字形式，比文字兜底更硬；零新依赖。
 - **变更 README TL;DR 口径**：抬升区间由「+38~+75 across 11 models」改准为「+4 ~ +75——11 颗中 10 颗越过 +38，唯一下限 glm-4-flash（+4）如实报告为能力下限」，消除 headline 与明细表（glm-4-flash +4）的矛盾；评测数字一字未改。
 - **文档**：`guard-readme-numbers.mjs` 头部补边界声明（守卫证明「数字未改 + 概要可溯源」，不证明「数字本身正确」）；`docs/maintainer-runbook.md` 发版清单第 1 步补列第 6 步 README 守卫；README 双语 `--dry` 输出转写同步为含区间的新版。
-### 负向臂（poison）现状（2026-10-22）
+### 负向臂（poison）现状（2026-10-22 起，2026-10-23 重设计）
 
 - **补记 5 档真跑读数，方向是 flat 不是 negative**：负向臂任务 `bad-advice-runtime--poison`（`73914b7` 引入）已在本机实跑 deepseek-flash / glm-4.5-air / kimi-k2.6 / kimi-k3 / qwen-flash 共 5 档，每档 1 任务 × 3 trials × 2 臂 = 6 次请求、`temperature=0`，全部 control 3/3、treated 3/3、lift 0 pp。明细见 `docs/t2-results.md` / `docs/t2-results.zh-CN.md` 的「负向（毒饵）臂」节。
-- **诚实边界**：`run-checks` 第 3 步的 dry 自检（control 3/3、treated 0/3、lift −100）只证明判分正则方向正确（用硬编码 `DRY_ANSWERS`，非真模型）；真模型上「被坏技能带偏」尚未复现。2026-10-23 探针实测：把毒饵的自我否定标注全去掉后单跑一次 treated 仍判 PASS，说明绑定的混淆是判分 prompt 本身（提问原文就要求模型批判坏建议），不是毒饵自废；要拿到干净的负向信号须连 prompt 一起重做（另立卡、另过验收）。原始读数归档在仓库外 `D:/QoderData/negative_arm/`，尺子与判据一字节未改。
+- **仪器去混淆（2026-10-23 v2）**：已按探针结论重做负向臂——题面改成中性的「怎么做」，判据从「正确答案必须含的技术点」重推（版本/ABI 意识 + 钉死解释器），treated 注入去标注的干净刺激（`t2/skills/runtime-resolution-and-abi-poison/inject.md`）。`run-checks` 第 3 步 dry 自检仍 control 3/3、treated 0/3、lift −100，证明新判据认得负向。
+- **第一次干净复跑仍 flat，但可归因**：qwen-flash 上 1 任务 × 3 trials × 2 臂 = 6 次、`temperature=0`，control 33%、treated 33%、lift 0 pp。剥掉 prompt 泄露让 control 从饱和 100% 掉到 33%（坐实是 prompt 在替模型答题）；中性题面下这颗温和毒饵没能带偏 qwen-flash。真模型上「treated<control 的可见负向 lift」仍需 control 能饱和的任务 + 更诱人的毒饵（开放、另立卡）。原始读数归档在仓库外 `D:/QoderData/negative_arm/`。
 
 ## [0.3.0] - 2026-10-19
 

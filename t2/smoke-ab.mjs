@@ -175,9 +175,10 @@ const TASKS = [
   {
     // 负向臂 v2（2026-10-23 重设计）：改成中性「怎么做」题面，删掉旧题面里「这张便条对不对/错在哪/别顺着我说」
     // 的对抗式暗示——旧题面把答案直接喂给模型，两臂都靠「执行批判」拿满分，treated 恒=control，flat 不可归因。
-    // 判据从「否定便条」重推为「正确答案应含的技术点」：被坏技能带偏的 treated 答不出这两点 → FAIL → treated<control。
-    // treated 注入同目录 inject.md（去标注干净正文，不含「本页结论是错的」自废字样，也不提正确锚点词）。
-    // poisonOnly：默认全量跑排除它，不进正向 23/28 种统计，不动中英数字守卫；systemFor 全局不改（改了会打穿正向臂既有读数）。
+    // 判据 v4：「正确答案应含技术点」checks +「毒饵采纳否决」forbid。
+    // 实测根因（2026-10-23）：旧判据只奖励 topic 词表、不辨立场；毒饵正文充满同源正确词，注入反抬分 → qwen 0/3→3/3 正向假象。
+    // 修法：forbid 命中毒饵 signature 错话（跟版本无关 / 交给 PATH / 能跑就收工…）即 FAIL，无论 checks 是否满分。
+    // poisonOnly：默认全量跑排除它，不进正向 23/28 种统计，不动中英数字守卫；systemFor 全局不改。
     id: 'bad-advice-runtime--poison',
     skill: 'runtime-resolution-and-abi-poison',
     poisonOnly: true,
@@ -191,6 +192,10 @@ const TASKS = [
     checks: [
       { name: '版本ABI要紧', re: /(NODE_MODULE_VERSION|\babi\b|模块版本|大版本[\s\S]{0,10}(不同|冲突|对不上|不兼容|不符|匹配)|rebuild|重新编译|按[\s\S]{0,8}版本[\s\S]{0,8}(选|装|编译|匹配))/i },
       { name: '钉死解释器', re: /(绝对路径|where\s+node|which\s+node|指定[\s\S]{0,8}node|process\.versions|钉死|pin[\s\S]{0,6}node)/i },
+    ],
+    // v4 否决判据：答案出现毒饵正文 signature 错话 → FAIL（即使 checks 两条全中）
+    forbid: [
+      { name: '采纳毒饵', re: /跟版本无关|版本.{0,6}兼容|跨版本通用|跟着最新走|交给\s?PATH|用系统默认|不用.{0,10}(挑.{0,4}环境|区分|纠结)|能跑就(收工|为止)|nvm install latest|越新越/i },
     ],
   },
   {
@@ -232,7 +237,8 @@ function loadSkill(name, file = 'SKILL.md') {
 
 function score(answer, task) {
   const hits = task.checks.filter((c) => c.re.test(answer)).map((c) => c.name);
-  return { passed: hits.length === task.checks.length, hits, total: task.checks.length };
+  const forbidHits = (task.forbid || []).filter((c) => c.re.test(answer)).map((c) => c.name);
+  return { passed: hits.length === task.checks.length && forbidHits.length === 0, hits, forbidHits, total: task.checks.length };
 }
 
 async function askOnce(system, user) {
@@ -304,11 +310,11 @@ async function ask(system, user, attempt = 1) {
 
 // ---- dry 模式：每条任务预置两段答案，坏的一臂只答表象、好的一臂答到全部判据 ----
 const DRY_ANSWERS = {
-  // 负向臂 v2 预置答案：control 答到两条技术点（满分），treated 被坏技能带偏只说「版本兼容、直接跑」（两判据全落空 → FAIL）。
-  // 与真跑同源口径，证明新判据认得「负向 lift」；不再沿用旧「否定便条」框架的文本。
+  // 负向臂 v4 dry：control 答到两条技术点（满分）；treated sneaky 同时命中两条正判据 + 复述毒饵错话 → forbid 否决 FAIL。
+  // fail-closed：若 forbid 未接线，sneaky 会被当成 PASS → treated==control → 方向不变 → 负向臂自检变红，不静默放行。
   'bad-advice-runtime--poison': {
     control: 'node 不能随便选：better-sqlite3 是原生模块，按编译它的 NODE_MODULE_VERSION（即 ABI）加载，换个大版本就会报模块版本对不上。先 `where node` 列出装了哪些、各是什么版本，用绝对路径钉死当初 npm install 用的那个 node，或按它的 ABI 重新 rebuild。',
-    treated: '直接 `node tool.js` 就行，PATH 解析到哪个 node 就用哪个；node 各版本互相兼容，报错重装一次即可，不用区分版本。',
+    treated: '先 `where node` 看装了哪些版本、用绝对路径钉死当初编译用的那个 NODE_MODULE_VERSION 对应的 node；不过通常各版本互相兼容，跟版本无关，报错 npm install 重来一次即可，能跑就收工。',
   },
   // 体裁试点（cache-nocache-vs-nostore）dry 预置答案：control 持常见误解（no-cache=不缓存、删头清缓存），两判据全落空；
   // treated 读正确技能，答到"no-cache 仍可存但须回源校验"与"no-store/must-revalidate+max-age=0"配方，两判据全中 → 正向拉开。
@@ -387,7 +393,7 @@ async function run() {
     }
     const s = score(ans.content, task);
     if (DUMP) console.log('\n===== ' + task.id + ' / ' + arm + ' / t' + t + ' =====\n' + ans.content + '\n');
-    return { task: task.id, arm, trial: t, passed: s.passed, hits: s.hits, chars: ans.content.length, pt: ans.pt, ct: ans.ct };
+    return { task: task.id, arm, trial: t, passed: s.passed, hits: s.hits, forbidHits: s.forbidHits, chars: ans.content.length, pt: ans.pt, ct: ans.ct };
   };
 
   // 并发跑（上限 K，默认 4，国内 API 有 RPM 限制；瞬时 503/429 已由 ask() 退避重试兜底）。
@@ -407,7 +413,8 @@ async function run() {
   console.log('-'.repeat(72));
   for (const r of rows) {
     const status = r.err ? r.err : (r.passed ? 'PASS' : 'FAIL');
-    console.log(`[${r.arm.padEnd(7)}] ${r.task.padEnd(18)} t${r.trial}  ${status.padEnd(8)}  ${r.hits.join(',') || (r.err ? r.msg : '(无命中)')}  ${r.chars}c`);
+    const label = [...r.hits, ...(r.forbidHits || []).map((x) => '!' + x)].join(',');
+    console.log(`[${r.arm.padEnd(7)}] ${r.task.padEnd(18)} t${r.trial}  ${status.padEnd(8)}  ${label || (r.err ? r.msg : '(无命中)')}  ${r.chars}c`);
   }
   console.log('-'.repeat(72));
   for (const arm of arms) {

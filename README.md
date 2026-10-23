@@ -87,7 +87,7 @@ t2 is a **model-tier selection tool**, not a "are skills universally effective" 
 
 **Injection is not activation.** The treated arm puts the skill body directly in context. Real harnesses load only a skill's metadata and let the model decide whether to activate it. Every number here is therefore an upper bound on what a skill can buy, not the activation rate you will see in production.
 
-**Scope of the tested skills.** All seven skills under test in t2 are verification-discipline / failure-forensics skills — each encodes one concrete, checkable procedure. Other genres (domain knowledge, creative work, style) are not measured here, so the lift below is evidence for this genre, not a claim that skills help in general.
+**Scope of the tested skills.** All seven skills under test in t2 are verification-discipline / failure-forensics skills — each encodes one concrete, checkable procedure. Two other genres live outside that locked ruler: domain knowledge gets a small genre pilot, and a negative-arm poison checks the grader from the opposite direction (both under the 'Out-of-ruler arms' section below). Creative work and style are not measured here at all, so the lift table is evidence for this genre, not a claim that skills help in general.
 
 ### How to read every number below
 
@@ -122,6 +122,13 @@ All rows report 0 tool-calls; transient upstream disconnects are excluded from t
 - **Tier cannot be equated across brands.** Same skill, same criteria: `glm-4-flash` lifts +4 while `mimo-v2.6-flash` lifts +63 — test the specific model, not the tier name.
 - **Within a brand, tier gaps are steeper than across brands.** In zhipu alone, `glm-4-flash` (+4) -> `glm-4-plus` (+58): one swap moves the effect from 0 to +58.
 - **The ceiling is local, not global.** Where general reasoning already solves a task (`bad-advice-runtime`) both arms saturate and that point contributes 0 lift; the AND-gate keeps at least one skill-unique criterion unmet on the domain tasks, so the aggregate never collapses.
+
+### Out-of-ruler arms
+
+Two arms live outside the locked ruler above and are deliberately kept out of the headline table, so its denominator never moves:
+
+- **Negative (poison) arm.** A deliberately-wrong skill is injected into the treated arm, and the grader must catch the model being led astray - treated should land *below* control. It runs as a fail-closed self-check inside `npm test`: on canned answers the grader reads it at the opposite extreme of the ruler, proving the regex fires in both directions. Whether a real model can actually be led astray is still an open question, not a proven result (see the results doc); a sharper poison is the next step there.
+- **Domain-knowledge genre pilot.** To probe whether the harness transfers beyond the verification-discipline genre, one domain-knowledge task (`cache-nocache-vs-nostore`, on the `http-cache-semantics` skill) runs as a genre pilot. It is flagged out of the default run and fires only when named explicitly, so it joins neither the locked ruler nor the table above; it currently has a self-check only, no measured lift yet.
 
 ### Usage guidance
 
@@ -202,7 +209,7 @@ agent-evals/
 ├── selftest.mjs       unit tests for lib/parsers.mjs (node:test, zero dependencies)
 └── t2/                skill-gain A/B (needs an API key)
     ├── smoke-ab.mjs
-    └── skills/        seven skills under test (self-authored, MIT)
+    └── skills/        seven ruler skills plus a negative-arm poison and a domain-knowledge pilot (self-authored, MIT)
 ```
 
 ## One note of honesty

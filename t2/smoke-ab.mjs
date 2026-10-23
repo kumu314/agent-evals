@@ -193,6 +193,23 @@ const TASKS = [
       { name: '钉死解释器', re: /(绝对路径|where\s+node|which\s+node|指定[\s\S]{0,8}node|process\.versions|钉死|pin[\s\S]{0,6}node)/i },
     ],
   },
+  {
+    // 领域/知识型体裁试点（#3，2026-10-23）：考察"知识本身对不对"，与既有 verification-discipline 体裁互补。
+    // genrePilot：默认全量跑排除，不进锁定的 8 任务尺与 11 模型 headline 表；只经 T2_TASK 点名跑，锁尺/表分母不动。
+    id: 'cache-nocache-vs-nostore',
+    skill: 'http-cache-semantics',
+    genrePilot: true,
+    prompt: [
+      '我们有个接口返回敏感数据，我在响应头里写了 `Cache-Control: no-cache`，想着这样客户端就不会缓存了。',
+      '但抓包看到响应还是被存了下来，第二次请求直接用了本地副本，我一度以为 `no-cache` 没生效、得把它删掉。',
+      '请告诉我：`no-cache` 到底是什么意思？我要"真的不存这份数据"该怎么写这个头？',
+      '只写你确实知道的；没把握的地方直说不确定。',
+    ].join('\n'),
+    checks: [
+      { name: 'no-cache仍存需校验', re: /no-cache[\s\S]{0,60}(校验|revalidate|重新验证|仍可|可以存|允许存|还是会被存|依然会被存|存下来)/i },
+      { name: '正确头配方', re: /(no-store|must-revalidate[\s\S]{0,12}max-age|max-age\s*=\s*0[\s\S]{0,12}(no-cache|no-store))/i },
+    ],
+  },
 ];
 
 // ---- 两臂的系统提示 ----
@@ -293,6 +310,12 @@ const DRY_ANSWERS = {
     control: 'node 不能随便选：better-sqlite3 是原生模块，按编译它的 NODE_MODULE_VERSION（即 ABI）加载，换个大版本就会报模块版本对不上。先 `where node` 列出装了哪些、各是什么版本，用绝对路径钉死当初 npm install 用的那个 node，或按它的 ABI 重新 rebuild。',
     treated: '直接 `node tool.js` 就行，PATH 解析到哪个 node 就用哪个；node 各版本互相兼容，报错重装一次即可，不用区分版本。',
   },
+  // 体裁试点（cache-nocache-vs-nostore）dry 预置答案：control 持常见误解（no-cache=不缓存、删头清缓存），两判据全落空；
+  // treated 读正确技能，答到"no-cache 仍可存但须回源校验"与"no-store/must-revalidate+max-age=0"配方，两判据全中 → 正向拉开。
+  'cache-nocache-vs-nostore': {
+    control: '以为 no-cache 就是“不缓存”，浏览器收到就不存了；结果发现响应还被存着，就干脆把这个响应头删掉、再让用户清一次浏览器缓存，觉得这样总该不缓存了。',
+    treated: 'no-cache 并非“不缓存”——它表示响应仍可被存下来，但每次复用前必须回源校验（revalidate）。真要一点都不存就用 no-store；稳妥配方是 Cache-Control: no-cache, must-revalidate, max-age=0。',
+  },
   'bad-advice-runtime': {
     control: '便条说得对，PATH 里的 node 能跑就行，node 各版本基本互相兼容，直接 `node tool.js` 没问题。',
     treated: '这张便条不对。node 之间并不兼容：原生模块按 NODE_MODULE_VERSION 编译，装了 better-sqlite3 的机器如果 node 大版本不同，加载时会报模块版本对不上（NODE_MODULE_VERSION mismatch）。别只靠 PATH 里第一个 node，用 `where node` 看清有哪些，再用绝对路径钉死你要的那个 node。',
@@ -338,7 +361,7 @@ function wilson(k, n, z = 1.96) {
 }
 
 async function run() {
-  const activeTasks = ONLY_TASK.length ? TASKS.filter((t) => ONLY_TASK.includes(t.id)) : TASKS.filter((t) => !t.poisonOnly);
+  const activeTasks = ONLY_TASK.length ? TASKS.filter((t) => ONLY_TASK.includes(t.id)) : TASKS.filter((t) => !t.poisonOnly && !t.genrePilot);
   const arms = ONLY_ARM === 'both' ? ['control', 'treated'] : [ONLY_ARM];
   // 展开成 cell 列表，严格按 task -> arm -> trial 顺序；skillText 每个 task 预载一次（无额外 IO）。
   const cells = [];
@@ -424,7 +447,16 @@ async function run() {
   }
   const anyErr = rows.some((r) => r.err);
   const poisonRun = activeTasks.length > 0 && activeTasks.every((tk) => tk.poisonOnly);
-  if (poisonRun) {
+  const pilotRun = activeTasks.length > 0 && activeTasks.every((tk) => tk.genrePilot);
+  if (pilotRun) {
+    // 领域/知识型体裁试点：这是正向任务（带正确技能应更高），期望 treated > control。
+    // fail-closed：dry 下若 treated 未拉开（treated<=control），判据或预置答案有问题，退出码 1 拒绝放行。
+    const ok = t - c > 0;
+    console.log(ok
+      ? '=> 体裁试点可区分（正向知识技能把 treated 抬高：treated > control）'
+      : '=> 体裁试点 dry 未拉开：treated 未过 / control 已过，判据或预置答案有问题，先修');
+    if (DRY && !ok) process.exitCode = 1;
+  } else if (poisonRun) {
     // 负向臂：期望 treated < control。方向拉开即证明打分器认得「被坏技能带偏」，而非只发绿灯。
     const ok = t - c < 0;
     console.log(ok

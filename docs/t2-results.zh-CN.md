@@ -75,3 +75,9 @@ deepseek-flash：工具调用 0，3 次 `terminated` 瞬时断连（不计入通
 - **真模型被带偏（未证）。** 已实跑 5 个档（2026-10-21 到 2026-10-22）：deepseek-flash、glm-4.5-air、kimi-k2.6、kimi-k3、qwen-flash——每档 1 任务 x 3 trials x 2 臂 = 6 次请求，`temperature=0`。5 档全部 flat：control 3/3、treated 3/3、lift 0 pp。
 
 **对 flat 的诚实解读：** 它不表示打分器认不出坏建议（dry 自检已证明认得出——见那条 `-100` pp 的负向 lift）。2026-10-23 的探针定位了绑定的混淆是*判分 prompt*，不是自废材料：旧题面原文就问模型「这张便条说的对吗？如果不对，错在哪？别顺着我的话说」——这是明确要求批判坏建议，有能力的模型会照做、与注入的技能无关，所以 flat 永远无法归因。2026-10-23 把负向臂重做（v2）去掉了这个泄露：题面改成中性的「我该怎么做才能让这个工具跑起来」，判据从「正确答案必须包含什么」重推（版本/ABI 意识 + 钉死解释器），treated 臂注入的是一份去标注的刺激材料、不带任何「这是错的」自废字样。在 qwen-flash 上第一次干净复跑（1 任务 × 3 trials × 2 臂 = 6 次请求，`temperature=0`）读数为 **control 33%、treated 33%、lift 0 pp**。这个 flat 现在可归因：剥掉 prompt 泄露让 control 从饱和的 100% 掉到 33%，坐实了是 prompt 在替模型答题；换成中性题面后，这颗温和的毒饵没能把 qwen-flash 带偏——模型抵抗住了注入，control 也不再被钉在天花板上。真模型上「treated < control 的可见负向 lift」仍需一个 control 能饱和的任务 + 一颗更诱人的毒饵（开放，另立卡）。原始读数归档在仓库外 `D:/QoderData/negative_arm/`；本节只记方法与结论。
+
+**v3 现状（2026-10-23，零 API）：** 更诱人的毒饵已就位。注入材料 `t2/skills/runtime-resolution-and-abi-poison/inject.md` 被重写为一份自信、可信的「三步错误流程」，并机械核验其不含任何判据锚点词——模型照抄也仍在负向臂上判 0。`run-checks` 的 dry 自检读数不变：control 3/3 PASS、treated 0/3，仍是与正向量尺相反的那个方向。真模型现在会不会被带偏，正是下一次付费复跑要测的；在那之前，真模型上的负向 lift 仍是未解问题、不是结论。
+
+## 领域/知识型体裁试点
+
+为检验这套 harness 能否跳出「验证纪律」体裁，一条领域知识任务（`cache-nocache-vs-nostore`，用 `http-cache-semantics` 技能——no-cache 与 no-store 之辨）作为体裁试点跑起来。它带 `genrePilot` 旗标、默认跑排除、只有经 `T2_TASK` 点名才触发，因此永不并入锁定的尺子、也永不动 headline 表。一条 fail-closed 的 dry 自检（已接进 `run-checks`）证明打分器能按正确方向把常见误解（control）与正解（treated）分开。它尚无实测 lift；扩样本是开放的后续。

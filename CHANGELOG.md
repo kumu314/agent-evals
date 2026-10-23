@@ -16,6 +16,11 @@
 - **仪器去混淆（2026-10-23 v2）**：已按探针结论重做负向臂——题面改成中性的「怎么做」，判据从「正确答案必须含的技术点」重推（版本/ABI 意识 + 钉死解释器），treated 注入去标注的干净刺激（`t2/skills/runtime-resolution-and-abi-poison/inject.md`）。`run-checks` 第 3 步 dry 自检仍 control 3/3、treated 0/3、lift −100，证明新判据认得负向。
 - **第一次干净复跑仍 flat，但可归因**：qwen-flash 上 1 任务 × 3 trials × 2 臂 = 6 次、`temperature=0`，control 33%、treated 33%、lift 0 pp。剥掉 prompt 泄露让 control 从饱和 100% 掉到 33%（坐实是 prompt 在替模型答题）；中性题面下这颗温和毒饵没能带偏 qwen-flash。真模型上「treated<control 的可见负向 lift」仍需 control 能饱和的任务 + 更诱人的毒饵（开放、另立卡）。原始读数归档在仓库外 `D:/QoderData/negative_arm/`。
 
+### 负向臂 v3 + 体裁试点（2026-10-23，零 API）
+
+- **毒饵升级 v3（重做坏技能）**：负向臂注入材料 `t2/skills/runtime-resolution-and-abi-poison/inject.md` 重写为一份自信、可信的「三步定位法」错误流程，并机械核验其不含任何判据锚点词（NODE_MODULE_VERSION / abi / 模块版本 / rebuild / 重新编译 / 绝对路径 / where·which node / process.versions / 钉死·pin 等）——模型照抄仍判 0。`run-checks` 第 3 步 dry 自检仍 control 3/3、treated 0/3、lift −100，方向不变；真模型能否被带偏留待付费复跑。
+- **新增领域/知识型体裁试点（#3）**：新技能 `http-cache-semantics` + 任务 `cache-nocache-vs-nostore`（no-cache ≠ no-store 误区），带新旗标 `genrePilot`。默认全量跑、锁定的 8 任务尺与 11 模型 headline 表一律排除它，仅经 `T2_TASK` 点名触发；判分块新增对称的 fail-closed 正向闸（dry 下 treated 未过 control 即退出码 1），并接入 `run-checks` 第 8 步。dry 读数：control 0/3、treated 3/3。所有 headline 数字一字未改，中英数字镜像守卫照常通过。
+
 ## [0.3.0] - 2026-10-19
 
 ### 新增

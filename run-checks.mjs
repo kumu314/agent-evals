@@ -16,6 +16,7 @@ const STEPS = [
   { name: 'selftest（lib/parsers 单测，node:test）', argv: ['--test', 'selftest.mjs'] },
   { name: 'T2 判分管线自检（零 API）', argv: ['t2/smoke-ab.mjs', '--dry'] },
   { name: 'T2 负向臂自检（坏技能须把 treated 判负，零 API）', argv: ['t2/smoke-ab.mjs', '--dry'], env: { T2_TASK: 'bad-advice-runtime--poison' } },
+  { name: 'T2 领域/知识体裁试点自检（正向技能须抬高 treated，零 API）', argv: ['t2/smoke-ab.mjs', '--dry'], env: { T2_TASK: 'cache-nocache-vs-nostore' } },
   { name: 'demo 自检（样例库 → 先红后绿）', argv: ['demo/run.mjs', '--assert'] },
   { name: 'merge-eval 负例 drill（零 API 零网络）', argv: ['merge-eval/drill-merge-eval.mjs'] },
   {

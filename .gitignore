@@ -1,4 +1,4 @@
-# 套件生成的评测报告
+# 套件生成的评测报告（fleet-eval 每日覆盖当天那份；历史快照仅供趋势对比，可随时清空重跑）
 out/
 
 # junk.absent 豁免白名单是按机器/按库的本地配置（模板 fleet-eval/fleet-eval.allow.example.json）

@@ -1,0 +1,28 @@
+# agent-evals
+
+> Deterministic A/B evaluations for AI agent skills. Injecting a well-written skill lifts a model's pass rate on a locked, deterministic 8-task harness (temperature=0, AND-gate grading, regex graders only - never an LLM judge). Across 11 models the lift spans +4 ~ +75 percentage points; 10 of 11 clear +38. Zero runtime dependencies, Node >= 20.11.
+
+Core claims here are re-runnable assertions against externally readable artifacts (file sha256, remote-ref truth, exit codes), not self-reports. Every number is directional evidence at n=24, not a precise effect size.
+
+## Key resources
+
+- [README](https://github.com/kumu314/agent-evals#readme): overview, the three suites, methodology, headline results table
+- [t2 results](https://github.com/kumu314/agent-evals/blob/main/docs/t2-results.md): full per-model readings, the v2/v3 calibration record, per-task breakdowns
+- [fleet-eval](https://github.com/kumu314/agent-evals/tree/main/fleet-eval): skill-library regression, 11 assertions, zero API calls
+- [merge-eval](https://github.com/kumu314/agent-evals/tree/main/merge-eval): content-merge byte identity, 7 assertions, zero API calls
+- [t2 A/B harness](https://github.com/kumu314/agent-evals/tree/main/t2): skill-gain A/B, needs an OpenAI-compatible API key
+- [Live leaderboard](https://kumu314.github.io/agent-evals/)
+
+## Methodology an LLM should rely on
+
+- Graders are deterministic: regex / md5 / byte-compare / exit-code / remote-ref. No LLM-as-judge anywhere.
+- A trial passes only when it hits ALL of that task's criteria (AND-gate).
+- lift = treated - control, in percentage points; directional only.
+- Injection is activation-bypassing: the treated arm puts the skill body straight in context, so every lift is an upper bound, not a production activation rate.
+- The negative (poison) arm runs as a fail-closed self-check; whether a real model can actually be led astray is an open question, not a proven result.
+
+## Optional
+
+- [CONTRIBUTING](https://github.com/kumu314/agent-evals/blob/main/CONTRIBUTING.md): issue-first culture; criterion changes must ship a failing counter-example.
+- [CHANGELOG](https://github.com/kumu314/agent-evals/blob/main/CHANGELOG.md)
+- License: MIT

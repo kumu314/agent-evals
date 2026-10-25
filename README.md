@@ -36,6 +36,8 @@ Three sub-suites, layered by whether they cost money:
 - [Quick start](#quick-start)
 - [What a run looks like](#what-a-run-looks-like)
 - [Directory layout](#directory-layout)
+- [Contributing](#contributing)
+- [Roadmap](#roadmap)
 - [One note of honesty](#one-note-of-honesty)
 - [Who made this, who it is for](#who-made-this-who-it-is-for)
 - [License](#license)
@@ -138,6 +140,8 @@ Two arms live outside the locked ruler above and are deliberately kept out of th
 
 ## Quick start
 
+**No build step, nothing to install** — zero runtime dependencies; clone and run.
+
 Requires Node ≥ 20.11 (uses `import.meta.dirname` and the built-in `fetch`). The runtime floor is declared in `package.json` under `engines`.
 
 ```bash
@@ -209,8 +213,25 @@ agent-evals/
 ├── selftest.mjs       unit tests for lib/parsers.mjs (node:test, zero dependencies)
 └── t2/                skill-gain A/B (needs an API key)
     ├── smoke-ab.mjs
-    └── skills/        seven ruler skills plus a negative-arm poison and a domain-knowledge pilot (self-authored, MIT)
+    └── skills/        seven ruler skills plus two negative-arm poisons and a domain-knowledge pilot (self-authored, MIT)
 ```
+
+## Contributing
+
+Single-maintainer, used daily — so the cheapest high-value contribution is a well-filed issue, not a PR. Full guidelines live in [CONTRIBUTING.md](CONTRIBUTING.md) (English | [中文](CONTRIBUTING.zh-CN.md)); the short version:
+
+- **Bug the grader, not just the code.** A criterion that wrongly flagged you, or a break that stayed green, is worth more than a feature request. The culture here is "when you see red, suspect the criterion first."
+- **A change to criterion semantics must ship with the counter-example that proves it goes red.** A check that can only go green does not get merged.
+- **PRs that touch the model (`*.mjs`): open an issue first.** No review bandwidth to land un-discussed PRs; documentation and typo fixes can go straight in.
+
+## Roadmap
+
+In priority order — every line here is an *open* direction, not a shipped feature:
+
+- **Turn the negative arm from self-check into a measured result.** Two poisons (runtime ABI, concurrency race) now run fail-closed inside `npm test`. The goal is a real model that a poison drags *below* its own control floor — proving the harness catches a model led astray, not just canned wrong answers.
+- **Widen past one genre.** All seven ruler skills are verification-discipline / failure-forensics. `cache-nocache-vs-nostore` (domain knowledge) is the first genre pilot; more genres move the lift table from "evidence for this genre" toward a transfer claim.
+- **Tighten the statistics.** Headline rows are single runs at n=24, so Wilson intervals are wide. Repeat runs would turn directional lifts into effect sizes — it costs API calls, so it stays opt-in.
+- **Keep the ceiling honest.** Model tiers get deprecated and re-released; the results doc pins the thinking config and capture date per row so numbers can be re-verified or explicitly marked stale.
 
 ## One note of honesty
 

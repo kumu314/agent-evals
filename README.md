@@ -232,6 +232,7 @@ In priority order — every line here is an *open* direction, not a shipped feat
 - **Widen past one genre.** All seven ruler skills are verification-discipline / failure-forensics. `cache-nocache-vs-nostore` (domain knowledge) is the first genre pilot; more genres move the lift table from "evidence for this genre" toward a transfer claim.
 - **Tighten the statistics.** Headline rows are single runs at n=24, so Wilson intervals are wide. Repeat runs would turn directional lifts into effect sizes — it costs API calls, so it stays opt-in.
 - **Keep the ceiling honest.** Model tiers get deprecated and re-released; the results doc pins the thinking config and capture date per row so numbers can be re-verified or explicitly marked stale.
+- **Catch junk that already reached the endpoints.** `junk.absent` scans the source tree and `endpoints.skillmd-parity` only compares `SKILL.md`; neither sees excluded junk that was fanned out before an exclusion rule existed and is now stranded on a target. An endpoint-side junk pass — same `excludeDirs`, run against each target — closes a blind spot a real scan just exposed on the author's own library.
 
 ## One note of honesty
 

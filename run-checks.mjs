@@ -28,6 +28,14 @@ const STEPS = [
     name: 'README 数字双向指纹守卫（中英镜像 + 概要可溯源）',
     argv: ['guard-readme-numbers.mjs'],
   },
+  {
+    name: 'AGENTS.md 漂移守卫自检（负对照：证明这道门真的会红）',
+    argv: ['scripts/check-agents-doc.mjs', '--selftest'],
+  },
+  {
+    name: 'AGENTS.md 漂移守卫（文档点名的路径/命令/旗标须仍在仓里）',
+    argv: ['scripts/check-agents-doc.mjs'],
+  },
 ];
 
 function run(step) {

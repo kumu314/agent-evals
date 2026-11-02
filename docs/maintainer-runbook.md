@@ -60,13 +60,29 @@ Regex-escaping reminder: criteria are "as long as it hits" broad standards — d
 
 ## 5. Release checklist
 
-1. `npm test` all green (selftest + T2 dry + demo + merge drill + fleet core + README number guard, the 6th step).
+1. `npm test` all green — it covers the parser/T2 selftests, the dry pipelines, demo, both negative-control drills, fleet core, the README number guard and the AGENTS.md guard.
 2. Three-platform CI green (ubuntu / windows / macos, `shell: bash`).
 3. Freeze `CHANGELOG.md`'s `[Unreleased]` into this version number, add the tag link.
 4. If criterion semantics changed, confirm the docs (each suite's README, `docs/eval-primitives.md`) are in sync — every reading in the docs must be reproducible on the spot with a script in the repo; hearsay does not count.
 5. Tag, push main.
 
-## 6. Environment dependencies (a pit hit once)
+## 6. Public contract (exit codes, schema, evidence directory)
+
+These are what a stranger's CI is allowed to depend on, so they are fixed here instead of left implied by the code:
+
+| suite | `0` | `1` | `2` |
+|---|---|---|---|
+| `t2/smoke-ab.mjs` | COMPLETE: dry passed, or the real run had no ERROR/TOOLCALL cell | configuration/args/criteria rejected, dry arms did not separate, or a fatal error | INCOMPLETE: the real run wrote evidence but has ERROR/TOOLCALL cells — resume it, do not cite it |
+| `t2/report.mjs` | report written | unknown `--format`, missing run directory, unreadable or incompatible evidence | not used |
+| `fleet-eval/fleet-eval.mjs` | all green | at least one item failed | unconfigured (`FLEET_SHARED` missing) or illegal `FLEET_SCOPE` |
+| `run-checks.mjs` | every step passed | first failing step, execution stops | not used |
+
+Evidence contract for t2: one directory per run under `out/t2/` (`T2_OUT_DIR` overrides), holding `manifest.json`, `rows.jsonl`, `summary.json`, `report.md`; every file carries `schema_version` (`1` today, `RUN_SCHEMA_VERSION` in `t2/lib/store.mjs`). Resume and report both refuse a mismatched version with exit `1` — no silent migration. Adding an optional field does not bump the version; removing/renaming a required field, changing an existing field's meaning, or changing cell identity/fingerprint inputs does. `summary.json` is derived from `rows.jsonl` and is never hand-edited.
+
+The copyable zero-cost CI snippet lives in `t2/README*.md`. The canonical full sequence is `.github/workflows/ci.yml`, and `node run-checks.mjs` must stay its local equivalent — if you add a check to one, add it to the other in the same change.
+
+## 7. Environment dependencies (a pit hit once)
+
 
 - Requires **Node ≥ 20.11** (uses `import.meta.dirname` and built-in `fetch`); already written into `package.json`'s `engines` and `.nvmrc`.
 - Some fleet-eval criteria call Python (`FLEET_PYTHON` or `python` on PATH); when Python is missing the relevant criteria should honestly report "cannot determine", not pretend to pass.

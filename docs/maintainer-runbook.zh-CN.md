@@ -60,13 +60,29 @@ t2 的价值全在**判据设计**：判据必须落在"技能正文里有、裸
 
 ## 5. 发版检查清单
 
-1. `npm test` 全绿（selftest + T2 dry + demo + merge drill + fleet core + README 数字指纹守卫，即第 6 步）。
+1. `npm test` 全绿——它覆盖解析器/T2 自检、dry 管线、demo、两个负对照 drill、fleet core、README 数字守卫与 AGENTS.md 文档守卫。
 2. 三平台 CI 绿（ubuntu / windows / macos，`shell: bash`）。
 3. `CHANGELOG.md` 的 `[Unreleased]` 固化成本版号，补 tag 链接。
 4. 判据语义有变动的，确认文档（各套件 README、`docs/eval-primitives.md`）同步——文档里的读数必须能在仓库脚本里当场复现，转述不算。
 5. 打 tag、推 main。
 
-## 6. 环境依赖（踩过一次的坑）
+## 6. 公共契约（退出码 / schema / 证据目录）
+
+这些是外部使用者的 CI 允许依赖的部分，所以在这里钉死，而不是留给代码去暗示：
+
+| 套件 | `0` | `1` | `2` |
+|---|---|---|---|
+| `t2/smoke-ab.mjs` | COMPLETE：dry 通过，或真跑没有任何 ERROR/TOOLCALL cell | 配置/参数/判据被拒、dry 两臂没拉开，或致命错误 | INCOMPLETE：真跑写出了证据但存在 ERROR/TOOLCALL cell——应续跑，不得引用 |
+| `t2/report.mjs` | 报告已写出 | 未知 `--format`、缺运行目录、证据读不了或 `schema_version` 不兼容 | 不使用 |
+| `fleet-eval/fleet-eval.mjs` | 全绿 | 至少一项失败 | 未配置（缺 `FLEET_SHARED`）或 `FLEET_SCOPE` 非法 |
+| `run-checks.mjs` | 全部步骤通过 | 首个失败步骤，执行随即停止 | 不使用 |
+
+t2 的证据契约：一次运行一个目录，位于 `out/t2/`（`T2_OUT_DIR` 可覆盖），内含 `manifest.json`、`rows.jsonl`、`summary.json`、`report.md`；每份文件都带 `schema_version`（当前为 `1`，见 `t2/lib/store.mjs` 的 `RUN_SCHEMA_VERSION`）。续跑与报告对版本不一致的目录一律退出 `1`，不做静默迁移。新增可选字段不升版本；删除/改名必填字段、改变既有字段含义、或改变 cell 身份 / 指纹输入时必须升版本。`summary.json` 由 `rows.jsonl` 派生，禁止手改。
+
+可复制的零成本 CI 片段在 `t2/README*.md` 里。完整权威序列是 `.github/workflows/ci.yml`，而 `node run-checks.mjs` 必须始终是它的本地等价物——往一边加检查，就要在同一次改动里加到另一边。
+
+## 7. 环境依赖（踩过一次的坑）
+
 
 - 需要 **Node ≥ 20.11**（用了 `import.meta.dirname` 与内置 `fetch`）；已写进 `package.json` 的 `engines` 与 `.nvmrc`。
 - fleet-eval 部分判据会调 Python（`FLEET_PYTHON` 或 PATH 里的 `python`）；缺 Python 时相关判据应按"无法判定"如实报，不是假装通过。

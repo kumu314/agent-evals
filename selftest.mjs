@@ -15,8 +15,28 @@ test('stripPsComments：整行注释被剥，有效行原样保留', () => {
   assert.equal(stripPsComments('$a = 1\n# $old = 2\n$b = 3'), '$a = 1\n\n$b = 3');
 });
 
-test('stripPsComments：行内注释从 # 处截断（行级语义，不辨引号内外的 #）', () => {
+test('stripPsComments：引号内的 # 不截断，引号外的 # 才截断', () => {
   assert.equal(stripPsComments("'x' # 尾注"), "'x' ");
+});
+
+test('stripPsComments：单引号内的路径 # 保留，只剥真正的行尾注释', () => {
+  assert.equal(stripPsComments("'D:/a#b' # old"), "'D:/a#b' ");
+});
+
+test('stripPsComments：双引号内的 # 保留', () => {
+  assert.equal(stripPsComments('"D:/a#b" # old'), '"D:/a#b" ');
+});
+
+test('stripPsComments：PowerShell 单引号用两个单引号转义，不提前出串', () => {
+  assert.equal(stripPsComments("'it''s # still text' # real"), "'it''s # still text' ");
+});
+
+test('stripPsComments：双引号内的反引号转义引号不提前出串', () => {
+  assert.equal(stripPsComments('"a`"b#c" # tail'), '"a`"b#c" ');
+});
+
+test('stripPsComments：引号外的反引号转义 # 不是注释', () => {
+  assert.equal(stripPsComments('`#literal # real'), '`#literal ');
 });
 
 test('stripPsComments：CRLF 输入不破坏行切分（输出统一为 LF）', () => {
@@ -60,6 +80,10 @@ test('parseFrontmatter：值里含冒号不误劈（只有第一个冒号是分�
   assert.equal(fm.link, 'http://a:b');
 });
 
+test('parseFrontmatter：重复 key 抛错（不让后值静默覆盖前值）', () => {
+  assert.throws(() => parseFrontmatter('---\nname: a\nname: b\n---\n'), /重复/);
+});
+
 test('parseFrontmatter：缩进行不是顶层键，被跳过', () => {
   const fm = parseFrontmatter('---\nname: abc\n  sub: x\n---\n');
   assert.deepEqual(Object.keys(fm), ['name']);
@@ -84,6 +108,23 @@ test('extractPoems：嵌套数组按深度匹配，不在内层 ] 提前收口',
 
 test('extractPoems：字符串里的 ] 不算收口', () => {
   assert.equal(extractPoems('const POEMS = ["a]b"]'), '["a]b"]');
+});
+
+test('extractPoems：单引号字符串里的 ] 不算收口', () => {
+  assert.equal(extractPoems("const POEMS = ['a]b']"), "['a]b']");
+});
+
+test('extractPoems：模板字符串里的 ] 不算收口', () => {
+  assert.equal(extractPoems('const POEMS = [`a]b`]'), '[`a]b`]');
+});
+
+test('extractPoems：行注释里的 ] 不算收口', () => {
+  const src = 'const POEMS = [1, // ] 这是注释\n2]';
+  assert.equal(extractPoems(src), '[1, // ] 这是注释\n2]');
+});
+
+test('extractPoems：块注释里的 ] 不算收口', () => {
+  assert.equal(extractPoems('const POEMS = [1, /* ] */ 2]'), '[1, /* ] */ 2]');
 });
 
 test('extractPoems：转义引号不提前出串（"] 藏在转义引号后仍要续读）', () => {

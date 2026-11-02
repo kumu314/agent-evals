@@ -23,8 +23,8 @@
 //   FLEET_SHARED      必填。共享技能库根目录（含 sync.ps1 / skills/ / scripts/ 的那一级）。
 //   FLEET_PYTHON      可选。python 可执行文件路径；缺省用 PATH 里的 python。
 //   FLEET_ALLOW_FILE  可选。junk.absent 豁免白名单 JSON；缺省读本目录 fleet-eval.allow.json。
-//   FLEET_SCOPE       可选，默认 full。full=跑全部 11 项（老口径，一字不变）；
-//                     core=只跑与"共享库+扇出端点"布局无关的 6 项，跳过 fanout/tooling 那 5 项
+//   FLEET_SCOPE       可选，默认 full。full=跑全部 12 项（老口径加一条端点残留断言）；
+//                     core=只跑与"共享库+扇出端点"布局无关的 6 项，跳过 fanout/tooling 那 6 项
 //                     （你的技能库没有 sync.ps1 / 多端扇出 / anysearch 时用）。
 //                     必须显式声明——不是"检测到缺就自动跳"，那会把"你其实配错了路径"也一起藏掉。
 
@@ -129,7 +129,7 @@ const FORBIDDEN_NET = ['fetch(', 'XMLHttpRequest', 'axios',
   'http.get(', 'https.get('];
 const NET_URL_RE = /https?:\/\//;
 
-// 作用域开关（FLEET_SCOPE）：fanout/tooling 两层的 5 项断言绑死"共享库 + sync.ps1 多端扇出 + anysearch"
+// 作用域开关（FLEET_SCOPE）：fanout/tooling 两层的 6 项断言绑死"共享库 + sync.ps1 多端扇出 + anysearch"
 // 这套本机布局。别人的技能库没有这套结构时，可显式 FLEET_SCOPE=core 只跑布局无关的 6 项。
 // 默认 full 一字不改，保持 fail-closed——不配、配错、缺 sync.ps1 都照常红，绝不自动降级把配错误藏起来。
 const CORE_EXCLUDE_LAYERS = new Set(['fanout', 'tooling']);
@@ -141,6 +141,32 @@ function resolveScope() {
     process.exit(2);
   }
   return s;
+}
+
+// ── 垃圾扫描：junk.absent（源树）与 endpoints.junk-absent（端点）共用同一套规则 ──
+// 抽出 helper 的理由：同一种"目录排除 + *.bak + 精确路径豁免"若抄两份，源树口径与端点口径
+// 迟早会漂移；两条断言必须由同一份匹配逻辑驱动。
+const JUNK_DIRS = new Set(['.git', 'node_modules', '__pycache__']);
+const isJunkFile = (name) => /\.bak/i.test(name);
+
+// 只读扫描 baseDir，返回命中与豁免的 {key, rule}。
+// keyPrefix 让源树保持原有的 "技能目录/相对路径" 键形；端点扫描传空串得到端点内相对路径。
+// allow 只按精确 key 豁免目录（文件垃圾不接受豁免），与历史契约一致。
+function scanJunkTree(baseDir, keyPrefix, allow) {
+  const hits = [];
+  const allowed = [];
+  const walk = (dir, rel) => {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      const r = rel ? `${rel}/${e.name}` : e.name;
+      const key = `${keyPrefix}${r}`;
+      if (e.isDirectory()) {
+        if (JUNK_DIRS.has(e.name)) (allow.has(key) ? allowed : hits).push({ key, rule: e.name });
+        else walk(path.join(dir, e.name), r);
+      } else if (isJunkFile(e.name)) hits.push({ key, rule: '*.bak' });
+    }
+  };
+  walk(baseDir, '');
+  return { hits, allowed };
 }
 
 // ── task 定义：每项返回 { id, layer, desc, ok, detail, metrics } ───────────────
@@ -214,34 +240,44 @@ const CHECKS = [
     layer: 'hygiene',
     desc: '源树内无 .git / node_modules / __pycache__ / *.bak*（sync.ps1 的排除表，扇出会带回端点；豁免走配置文件 fleet-eval.allow.json，计入 metrics.allowed）',
     run({ skillDirs, allow, allowWarn }) {
-      const excl = new Set(['.git', 'node_modules', '__pycache__']);
       // 精确路径豁免（不按名字放过，别的技能下再出现 .git 仍算垃圾）。
       // 白名单 2026-10-12 F1 从代码硬编码移到 ALLOW_FILE——原部署机器上唯一合法的豁免
       // （某个刻意保留的上游克隆件的 `.git`）不是普适事实。
-      const ALLOW = allow;
       const hits = [];
       const allowed = [];
       for (const s of skillDirs) {
-        const base = path.join(SRC, s);
-        const walk = (dir, rel) => {
-          for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
-            const r = rel ? `${rel}/${e.name}` : e.name;
-            const key = `${s}/${r}`;
-            if (e.isDirectory()) {
-              if (excl.has(e.name)) { (ALLOW.has(key) ? allowed : hits).push(key); }
-              else walk(path.join(dir, e.name), r);
-            } else if (/\.bak/i.test(e.name)) hits.push(key);
-          }
-        };
-        walk(base, '');
+        const r = scanJunkTree(path.join(SRC, s), `${s}/`, allow);
+        hits.push(...r.hits);
+        allowed.push(...r.allowed);
       }
+      const hitKeys = hits.map((h) => h.key);
       return {
-        ok: hits.length === 0,
+        ok: hitKeys.length === 0,
         // 命中多时不再截掉尾部（此前 slice(0,10) 会把第 11 项藏起来，读数对不上明细）
         // allowWarn 非空 = 豁免配置坏了、本轮按最严口径跑——必须显式写进读数，不许静默。
         detail: (allowWarn ? `⚠ ${allowWarn} ——本轮豁免未生效 | ` : '')
-          + (hits.length ? hits.slice(0, 12).join(' | ') + (hits.length > 12 ? ` …共${hits.length}` : '') : 'clean'),
-        metrics: { junk: hits.length, allowed: allowed.length, allowWarn: allowWarn ? 1 : 0 },
+          + (hitKeys.length ? hitKeys.slice(0, 12).join(' | ') + (hitKeys.length > 12 ? ` …共${hitKeys.length}` : '') : 'clean'),
+        metrics: { junk: hitKeys.length, allowed: allowed.length, allowWarn: allowWarn ? 1 : 0 },
+      };
+    },
+  },
+  {
+    id: 'endpoints.junk-absent',
+    layer: 'fanout',
+    desc: '每个端点目录内无 .git / node_modules / __pycache__ / *.bak* 残留（只读扫描；逐条报目标、端点内相对路径与命中的规则）',
+    run({ targets }) {
+      const hits = [];
+      for (const t of targets) {
+        let st;
+        try { st = fs.statSync(t); } catch { continue; } // 缺端由 endpoints.present 负责，这里不重复报
+        if (!st.isDirectory()) continue;
+        const r = scanJunkTree(t, '', new Set());
+        for (const h of r.hits) hits.push(`${t} :: ${h.key} :: ${h.rule}`);
+      }
+      return {
+        ok: hits.length === 0,
+        detail: hits.length ? hits.slice(0, 12).join(' | ') + (hits.length > 12 ? ` …共${hits.length}` : '') : 'clean',
+        metrics: { targets: targets.length, junk: hits.length },
       };
     },
   },

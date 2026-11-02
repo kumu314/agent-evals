@@ -7,8 +7,11 @@
 //
 //   A1 注入：删掉 anysearch.py 的 UTF-8 守卫        → 期望 anysearch.encoding-verdict  FAIL
 //   A2 注入：往 scan.sanity 体内塞一行 fetch(...)   → 期望 suite.determinism-contract  FAIL
+//   S2 注入：往端点塞一个 cache.bak                  → 期望 endpoints.junk-absent      FAIL
+//               （同时检查 junk.absent 仍绿：它只该看源树）
 //
 //   A1 另带阳性对照：守卫完好的副本走同通道应绿；不绿则环境不可信、红不算数。
+//   没有 FLEET_ANYSEARCH / FLEET_SHARED 时，A1 在 TMP 造一个只含守卫的最小样本，drill 自包含。
 // 退出码：0 = 各 drill 全部如期；1 = 有 drill 未按预期工作（说明检查是假绿或环境不可信）。
 
 import fs from 'node:fs';
@@ -20,15 +23,21 @@ import { fileURLToPath } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SUITE = path.join(HERE, 'fleet-eval.mjs');
-// F1：不写死默认路径。显式 FLEET_ANYSEARCH 优先，否则由 FLEET_SHARED 派生；两者都没有 → exit 2。
-const ANYSEARCH = process.env.FLEET_ANYSEARCH
-  || (process.env.FLEET_SHARED ? path.join(process.env.FLEET_SHARED, 'skills', 'anysearch', 'scripts', 'anysearch.py') : null);
-if (!ANYSEARCH) {
-  console.error('需给 FLEET_ANYSEARCH 或 FLEET_SHARED —— drill 不猜默认位置。');
-  process.exit(2);
-}
 const NODE = process.execPath;
 const TMP = path.join(os.tmpdir(), `fleet-drill-${Date.now()}`);
+// F1：不写死默认路径。显式 FLEET_ANYSEARCH 优先，否则由 FLEET_SHARED 派生；
+// 两者都没有 → 在本 drill 的 TMP 里造一个只含 UTF-8 守卫的最小样本，drill 因此自包含：
+// 正/负对照仍走真实的 anysearch.encoding-verdict 判据，但不再要求跑的人先有一份真实技能库。
+const SYNTH_ANYSEARCH = path.join(TMP, 'fixture-anysearch', 'anysearch.py');
+const SYNTH_SRC = 'import sys\n'
+  + 'if hasattr(sys.stdout, "reconfigure"):\n'
+  + '    sys.stdout.reconfigure(encoding="utf-8")\n'
+  + 'if hasattr(sys.stderr, "reconfigure"):\n'
+  + '    sys.stderr.reconfigure(encoding="utf-8")\n';
+const ANYSEARCH = process.env.FLEET_ANYSEARCH
+  || (process.env.FLEET_SHARED ? path.join(process.env.FLEET_SHARED, 'skills', 'anysearch', 'scripts', 'anysearch.py') : SYNTH_ANYSEARCH);
+fs.mkdirSync(path.dirname(ANYSEARCH), { recursive: true });
+if (ANYSEARCH === SYNTH_ANYSEARCH) fs.writeFileSync(ANYSEARCH, SYNTH_SRC, 'utf8');
 
 const md5 = (f) => crypto.createHash('md5').update(fs.readFileSync(f)).digest('hex');
 const before = { suite: md5(SUITE), anysearch: md5(ANYSEARCH) };
@@ -155,11 +164,47 @@ function main() {
     && FANOUT_IDS.every((id) => (cr.skipped_by_scope || []).includes(id))
     && cr.results.length === 6
     && cr.results.every((r) => !FANOUT_IDS.includes(r.id)));
-  record('S1 正对照：scope=core 跳过 5 项 fanout/tooling 且无 sync.ps1 不崩', skipOk && coreRun.code === 0,
+  record('S1 正对照：scope=core 跳过 6 项 fanout/tooling 且无 sync.ps1 不崩', skipOk && coreRun.code === 0,
     `scope=${cr && cr.scope} skipped=${cr && (cr.skipped_by_scope || []).length} ran=${cr && cr.results.length} exit=${coreRun.code}`);
   const fullRun = runScope({});
   record('S1 负对照：无 sync.ps1 走默认 full 应如实报错（不自动降级）', fullRun.threw === true,
     `threw=${fullRun.threw === true} exit=${fullRun.code}`);
+
+  // ── S2：端点残留垃圾必须由独立断言报出（endpoints.junk-absent） ─────────────
+  // 正对照：干净源树 + 干净端点 → junk.absent 与 endpoints.junk-absent 都绿；
+  // 负对照：只往端点塞一个 cache.bak → 新断言翻红，而 junk.absent 仍绿（它只该看源树）。
+  const epShared = path.join(TMP, 'lib-endpoint');
+  const epTarget = path.join(TMP, 'endpoint-one');
+  fs.cpSync(path.join(HERE, '..', 'demo', 'fixture-clean', 'skills'), path.join(epShared, 'skills'), { recursive: true });
+  fs.cpSync(path.join(HERE, '..', 'demo', 'fixture-clean', 'skills'), epTarget, { recursive: true });
+  // 端点布局与 endpoints.skillmd-parity 一致：端点目录下直接是各技能的目录。
+  fs.writeFileSync(path.join(epShared, 'sync.ps1'),
+    '$targets = @(\n' + `'${epTarget.replace(/\\/g, '/')}'\n` + ')\n', 'utf8');
+  const epSuite = makeDrillSuite('fleet-eval-endpoint.mjs');
+  function runEndpoint() {
+    try {
+      const out = execFileSync(NODE, [epSuite, '--only', 'junk.absent', '--only', 'endpoints.junk-absent', '--json'],
+        { encoding: 'utf8', timeout: 120000, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, FLEET_SHARED: epShared } });
+      return JSON.parse(out);
+    } catch (e) {
+      const so = String(e.stdout || '');
+      if (so.trim().startsWith('{')) return JSON.parse(so);
+      throw e;
+    }
+  }
+  const byId = (rep, id) => rep.results.find((r) => r.id === id);
+  const cleanEp = runEndpoint();
+  const cleanSrc = byId(cleanEp, 'junk.absent');
+  const cleanNew = byId(cleanEp, 'endpoints.junk-absent');
+  record('S2 正对照：干净端点时两条断言都绿', cleanSrc?.ok === true && cleanNew?.ok === true,
+    `junk.absent=${cleanSrc?.ok} endpoints.junk-absent=${cleanNew?.ok} targets=${cleanNew?.metrics?.targets}`);
+  fs.writeFileSync(path.join(epTarget, 'alpha', 'cache.bak'), 'stale', 'utf8');
+  const dirtyEp = runEndpoint();
+  const dirtySrc = byId(dirtyEp, 'junk.absent');
+  const dirtyNew = byId(dirtyEp, 'endpoints.junk-absent');
+  record('S2 负对照：端点 cache.bak 只让新断言翻红',
+    dirtyNew?.ok === false && dirtyNew?.metrics?.junk === 1 && dirtySrc?.ok === true,
+    `endpoints.junk-absent ok=${dirtyNew?.ok} junk=${dirtyNew?.metrics?.junk} detail=${dirtyNew?.detail} | junk.absent ok=${dirtySrc?.ok}`);
 
   // ── 活文件零改动自证 ───────────────────────────────────────────────────────
   const after = { suite: md5(SUITE), anysearch: md5(ANYSEARCH) };

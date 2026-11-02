@@ -8,7 +8,7 @@ Core claims here are re-runnable assertions against externally readable artifact
 
 - [README](https://github.com/kumu314/agent-evals#readme): overview, the three suites, methodology, headline results table
 - [t2 results](https://github.com/kumu314/agent-evals/blob/main/docs/t2-results.md): full per-model readings, the v2/v3 calibration record, per-task breakdowns
-- [fleet-eval](https://github.com/kumu314/agent-evals/tree/main/fleet-eval): skill-library regression, 11 assertions, zero API calls
+- [fleet-eval](https://github.com/kumu314/agent-evals/tree/main/fleet-eval): skill-library regression, 12 assertions, zero API calls
 - [merge-eval](https://github.com/kumu314/agent-evals/tree/main/merge-eval): content-merge byte identity, 7 assertions, zero API calls
 - [t2 A/B harness](https://github.com/kumu314/agent-evals/tree/main/t2): skill-gain A/B, needs an OpenAI-compatible API key
 - [Live leaderboard](https://kumu314.github.io/agent-evals/)

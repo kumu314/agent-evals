@@ -56,6 +56,8 @@ pass_rate = 100.0%  (5/5)
 node demo/run.mjs --assert
 ```
 
+不带 `--assert` 时，这个命令只作演示：打印两轮结果并始终退出 `0`。需要拿它当门禁时必须加 `--assert`——破坏版没变红、或修好版没全绿，它都会退出 `1`。
+
 ## 两份 fixture 差在哪
 
 | 位置 | fixture-broken | 撞上的检查项 |
@@ -65,4 +67,4 @@ node demo/run.mjs --assert
 | `skills/epsilon/SKILL.md` | `name: alpha`（和 alpha 撞车） | `frontmatter.name-unique`（也顺带踩到 name-matches-dir） |
 | `skills/beta/cache.bak` | 一个散落的备份文件 | `junk.absent` |
 
-demo 只跑这 5 项「与布局无关」的断言，这样它不依赖 `sync.ps1` 里的端点布局。完整的 11 项要指到真实的技能库，见 [../fleet-eval/README.md](../fleet-eval/README.md)。
+demo 只跑这 5 项「与布局无关」的断言，这样它不依赖 `sync.ps1` 里的端点布局。完整的 12 项要指到真实的技能库，见 [../fleet-eval/README.md](../fleet-eval/README.md)。

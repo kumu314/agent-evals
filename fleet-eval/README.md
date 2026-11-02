@@ -4,8 +4,8 @@ English | [中文](README.zh-CN.md)
 
 > **Porting note**: `FLEET_SHARED` is **required**, pointing at your own skill-library root — there is no default (since 2026-10-12 the author's local paths were removed from the code; if unset it prints a one-line hint and exits with code `2`, rather than silently reading somewhere else).
 > It assumes that directory has `skills/`, `sync.ps1`, and `scripts/skills-reconcile.py` — a "shared skill library + multi-endpoint fan-out" layout.
-> If your directory structure differs, the 5 criteria `endpoints.*` / `reconcile.*` (fanout layer) and `anysearch.encoding-verdict` (tooling layer) will go red — they are bound to that layout by design.
-> To run only the 6 layout-independent criteria (the frontmatter / junk / suite ones), explicitly set `FLEET_SCOPE=core`: the suite will skip those 5 and **echo which ones it skipped**, running the rest normally. **The default `full` (all 11 criteria) is unchanged word for word** — not setting this switch, or a missing `sync.ps1`, still errors normally and does not auto-degrade (which would hide "you actually misconfigured the path").
+> If your directory structure differs, the 6 criteria `endpoints.*` / `reconcile.*` (fanout layer) and `anysearch.encoding-verdict` (tooling layer) will go red — they are bound to that layout by design.
+> To run only the 6 layout-independent criteria (the frontmatter / junk / suite ones), explicitly set `FLEET_SCOPE=core`: the suite will skip those 6 and **echo which ones it skipped**, running the rest normally. **The default `full` (all 12 criteria) is unchanged word for word** — not setting this switch, or a missing `sync.ps1`, still errors normally and does not auto-degrade (which would hide "you actually misconfigured the path").
 
 Retrieval date 2026-10-06. Methodology references are in `research/`; the project landscape list is in `research/project-landscape-2026-10-06.md`.
 
@@ -37,13 +37,13 @@ node fleet-eval.mjs --json          # JSON only
 | `FLEET_SHARED` | **required**. shared skill-library root (the level containing `sync.ps1` / `skills/` / `scripts/`) | prints a one-line hint, exits code `2` |
 | `FLEET_PYTHON` | python executable path (used by `reconcile.*`) | falls back to `python` on PATH |
 | `FLEET_ALLOW_FILE` | `junk.absent` exemption allowlist JSON path | reads `fleet-eval.allow.json` in this dir; no file = exempt nothing |
-| `FLEET_SCOPE` | scope: `full` (default, all 11 items) / `core` (only the 6 items independent of the "shared library + fan-out endpoints" layout, explicitly skipping the 5 fanout + tooling items and echoing which were skipped) | defaults to `full`; illegal value exits code `2` (not silently treated as default). When an external skill library lacks `sync.ps1`, **declare it explicitly with this, rather than letting the suite auto-degrade** |
-| `FLEET_ANYSEARCH` | path to anysearch.py in `drill-a1a2.mjs` | derived from `FLEET_SHARED`; if both absent, exit code `2` |
+| `FLEET_SCOPE` | scope: `full` (default, all 12 items) / `core` (only the 6 items independent of the "shared library + fan-out endpoints" layout, explicitly skipping the 6 fanout + tooling items and echoing which were skipped) | defaults to `full`; illegal value exits code `2` (not silently treated as default). When an external skill library lacks `sync.ps1`, **declare it explicitly with this, rather than letting the suite auto-degrade** |
+| `FLEET_ANYSEARCH` | path to anysearch.py in `drill-a1a2.mjs` | derived from `FLEET_SHARED`; if both are absent the drill synthesizes a minimal UTF-8-guard fixture in TMP (self-contained) |
 
 - Exit code `0` = all green; `1` = at least one item failed (each failing item carries a `detail` in the JSON).
 - The report lands at `out/fleet-eval-YYYY-MM-DD.json`.
 
-### What it checks (11 tasks, all deterministic graders)
+### What it checks (12 tasks, all deterministic graders)
 
 | id | layer | assertion |
 |---|---|---|
@@ -52,6 +52,7 @@ node fleet-eval.mjs --json          # JSON only
 | `frontmatter.name-matches-dir` | structure | `name` == directory name |
 | `frontmatter.name-unique` | routing | `name` is unique within the source tree |
 | `junk.absent` | hygiene | no `.git`/`node_modules`/`__pycache__`/`*.bak*`; exemptions go by **exact path** through the config file `fleet-eval.allow.json` (template `fleet-eval.allow.example.json`, path overridable via `FLEET_ALLOW_FILE`): no such file = exempt nothing; broken file or non-string-array = warn into detail and **do not pass** (fail-closed, so a broken config can't silently launder junk) |
+| `endpoints.junk-absent` | fanout | each endpoint directory is scanned read-only for `.git`/`node_modules`/`__pycache__`/`*.bak*`; every hit reports the target, the endpoint-relative path and the matched rule. Shares the same exclusion/exemption matcher as `junk.absent`, so source and endpoint hygiene cannot drift apart |
 | `endpoints.present` | fanout | the declared endpoint directories all exist |
 | `endpoints.match-authority` | fanout | this suite's live-read `sync.ps1` endpoint list == the output of `skills-reconcile.py --targets` |
 | `endpoints.skillmd-parity` | fanout | each endpoint's each skill's SKILL.md md5 == source (honors `$hideFrom`) |

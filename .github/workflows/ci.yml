@@ -31,16 +31,24 @@ jobs:
 
       - name: T2 判分管线自检（零 API 调用）
         run: node t2/smoke-ab.mjs --dry
+      - name: T2 模块自检（配置、运行状态、续跑，node:test 零 API）
+        run: node --test t2/selftest.mjs
+      - name: T2 负向臂自检×2（runtime-ABI + race-sleep，零 API）
+        run: T2_TASK=bad-advice-runtime--poison,race-sleep-poison node t2/smoke-ab.mjs --dry
+      - name: T2 领域/知识体裁试点自检（正向技能须抬高 treated，零 API）
+        run: T2_TASK=cache-nocache-vs-nostore node t2/smoke-ab.mjs --dry
       - name: demo 自检（样例技能库 → 先红后绿）
         run: node demo/run.mjs --assert
       - name: 解析器自检（F6，node:test，零依赖）
         run: node --test selftest.mjs
       - name: merge-eval 负例 drill（F5，临时 fixture 仓库，零 API 零网络）
         run: node merge-eval/drill-merge-eval.mjs
-      - name: fleet-eval core 作用域自检（样例库 → 摘掉 fanout 5 项，零网络）
+      - name: fleet-eval core 作用域自检（样例库 → 摘掉 fanout/tooling 6 项，零网络）
         run: |
           set -e
           FLEET_SHARED=demo/fixture-clean FLEET_SCOPE=core node fleet-eval/fleet-eval.mjs --trials 1
+      - name: fleet-eval 负例 drill（A1/A2/S1/S2，零 API 零网络）
+        run: node fleet-eval/drill-a1a2.mjs
       - name: README 数字双向指纹守卫（零依赖，中英镜像 + 概要可溯源）
         run: node guard-readme-numbers.mjs
       - name: AGENTS.md 漂移守卫自检（负对照证明门会红）

@@ -4,8 +4,8 @@
 
 > **移植提示**：`FLEET_SHARED` **必填**，指向你自己的技能库根目录——没有默认值（2026-10-12 起作者本机路径已从代码里删除；不配则打印一行提示并退出码 `2`，不静默读别处）。
 > 它假定该目录下有 `skills/`、`sync.ps1`、`scripts/skills-reconcile.py`——即一套"共享技能库 + 多端扇出"的布局。
-> 若你的目录结构不同，`endpoints.*` / `reconcile.*`（fanout 层）与 `anysearch.encoding-verdict`（tooling 层）这 5 条会红——它们本来就绑定那套布局。
-> 想只跑与布局无关的 6 条（frontmatter / junk / suite 那几项），显式设 `FLEET_SCOPE=core`：套件会跳过那 5 条并**回显跳过了哪些**，其余照常跑。**默认 `full`（跑全部 11 条）一字不变**——不设这个开关、或 `sync.ps1` 缺失，都会照常报错，不会自动降级（那会把"你其实配错了路径"一起藏掉）。
+> 若你的目录结构不同，`endpoints.*` / `reconcile.*`（fanout 层）与 `anysearch.encoding-verdict`（tooling 层）这 6 条会红——它们本来就绑定那套布局。
+> 想只跑与布局无关的 6 条（frontmatter / junk / suite 那几项），显式设 `FLEET_SCOPE=core`：套件会跳过那 6 条并**回显跳过了哪些**，其余照常跑。**默认 `full`（跑全部 12 条）一字不变**——不设这个开关、或 `sync.ps1` 缺失，都会照常报错，不会自动降级（那会把"你其实配错了路径"一起藏掉）。
 
 检索日 2026-10-06。方法论依据见 `research/`，项目面清单见 `research/project-landscape-2026-10-06.md`。
 
@@ -37,13 +37,13 @@ node fleet-eval.mjs --json          # 只出 JSON
 | `FLEET_SHARED` | **必填**。共享技能库根目录（含 `sync.ps1` / `skills/` / `scripts/` 的那一级） | 打印一行提示，退出码 `2` |
 | `FLEET_PYTHON` | python 可执行文件路径（`reconcile.*` 用） | 回落 PATH 里的 `python` |
 | `FLEET_ALLOW_FILE` | `junk.absent` 豁免白名单 JSON 路径 | 读本目录 `fleet-eval.allow.json`；没有 = 不豁免任何项 |
-| `FLEET_SCOPE` | 作用域：`full`（默认，跑全部 11 项）/ `core`（只跑与"共享库 + 扇出端点"布局无关的 6 项，显式跳过 fanout + tooling 那 5 项并回显跳过了哪些） | 缺省 `full`；非法值退出码 `2`（不静默当默认）。外部技能库缺 `sync.ps1` 时**用它显式声明，而不是让套件自动降级** |
-| `FLEET_ANYSEARCH` | `drill-a1a2.mjs` 里 anysearch.py 的路径 | 从 `FLEET_SHARED` 推导；两者皆无退出码 `2` |
+| `FLEET_SCOPE` | 作用域：`full`（默认，跑全部 12 项）/ `core`（只跑与"共享库 + 扇出端点"布局无关的 6 项，显式跳过 fanout + tooling 那 6 项并回显跳过了哪些） | 缺省 `full`；非法值退出码 `2`（不静默当默认）。外部技能库缺 `sync.ps1` 时**用它显式声明，而不是让套件自动降级** |
+| `FLEET_ANYSEARCH` | `drill-a1a2.mjs` 里 anysearch.py 的路径 | 从 `FLEET_SHARED` 推导；两者皆无时 drill 在 TMP 里造一个只含 UTF-8 守卫的最小样本（自包含） |
 
 - 退出码 `0` = 全绿；`1` = 有条目失败（每个失败项在 JSON 里带 `detail`）。
 - 报告落盘 `out/fleet-eval-YYYY-MM-DD.json`。
 
-### 它检查什么（11 个 task，全确定性 grader）
+### 它检查什么（12 个 task，全确定性 grader）
 
 | id | 层 | 断言 |
 |---|---|---|
@@ -52,6 +52,7 @@ node fleet-eval.mjs --json          # 只出 JSON
 | `frontmatter.name-matches-dir` | structure | `name` == 目录名 |
 | `frontmatter.name-unique` | routing | `name` 在源树内唯一 |
 | `junk.absent` | hygiene | 无 `.git`/`node_modules`/`__pycache__`/`*.bak*`；豁免按**精确路径**走配置文件 `fleet-eval.allow.json`（模板 `fleet-eval.allow.example.json`，`FLEET_ALLOW_FILE` 可覆盖路径）：没有这份文件 = 不豁免任何项；文件坏/不是字符串数组 = warn 写进 detail 且不放行（fail-closed，防把垃圾静默洗白） |
+| `endpoints.junk-absent` | fanout | 每个端点目录只读扫描 `.git`/`node_modules`/`__pycache__`/`*.bak*`；每条命中都报出目标、端点内相对路径与命中的规则。与 `junk.absent` 共用同一套排除/豁免匹配，源树与端点口径不会各自漂移 |
 | `endpoints.present` | fanout | 声明的端点目录都存在 |
 | `endpoints.match-authority` | fanout | 本套件现读 `sync.ps1` 的端点名单 == `skills-reconcile.py --targets` 的输出 |
 | `endpoints.skillmd-parity` | fanout | 每端每颗技能 SKILL.md 的 md5 == 源（尊重 `$hideFrom`） |

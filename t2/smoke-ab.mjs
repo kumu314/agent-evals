@@ -9,22 +9,12 @@
 //   node smoke-ab.mjs                           # 真跑
 import fs from 'node:fs';
 import path from 'node:path';
-import { TASKS, DRY_ANSWERS } from './lib/tasks.mjs';
-
-const BASE  = process.env.T2_BASE_URL;
-const KEY   = process.env.T2_API_KEY;
-const MODEL = process.env.T2_MODEL;
-const TRIALS = Number(process.env.T2_TRIALS || 3);
-const SKILL_ROOT = process.env.T2_SKILL_ROOT || path.join(import.meta.dirname, 'skills');
-// 子集过滤：T2_TASK 逗号分隔任务 id；T2_ARM=control|treated|both（默认 both）
-const ONLY_TASK = (process.env.T2_TASK || '').split(',').map((s) => s.trim()).filter(Boolean);
-const ONLY_ARM = process.env.T2_ARM || 'both';
-const DUMP = process.env.T2_DUMP === '1';
-const DRY = process.argv.includes('--dry');
-// Provider temperature compatibility: default 0 preserves the A/B reproducibility anchor; some models (e.g. kimi-k2.6) only accept 1, set T2_TEMPERATURE=1 for those runs only.
-const TEMPERATURE = Number(process.env.T2_TEMPERATURE ?? 0);
-// Per-request response timeout (ms); default 60000. Some reasoning models (e.g. kimi-k3) exceed 60s at temp=1; raise via T2_TIMEOUT only for those runs.
-const RESP_TIMEOUT = Number(process.env.T2_TIMEOUT || 60000);
+import { DRY_ANSWERS } from './lib/tasks.mjs';
+import { promptIdsFor, promptFor } from './lib/prompt-variants.mjs';
+import { parseConfig } from './lib/config.mjs';
+import { score } from './lib/grader.mjs';
+import { createRunStore, buildManifest, loadRun, resumePlan, assertResumeFingerprint } from './lib/store.mjs';
+import { summarizeRows, orderArmsForPair } from './lib/stats.mjs';
 
 
 // ---- 两臂的系统提示 ----
@@ -35,46 +25,40 @@ function systemFor(arm, skillName, skillText) {
 }
 
 const _skillCache = new Map();
-function loadSkill(name, file = 'SKILL.md') {
-  const cacheKey = name + '::' + file;
+function loadSkill(name, file = 'SKILL.md', skillRoot) {
+  const cacheKey = skillRoot + '::' + name + '::' + file;
   if (_skillCache.has(cacheKey)) return _skillCache.get(cacheKey);
-  const p = path.join(SKILL_ROOT, name, file);
+  const p = path.join(skillRoot, name, file);
   if (!fs.existsSync(p)) throw new Error('技能不存在: ' + p);
   const t = fs.readFileSync(p, 'utf8');
   _skillCache.set(cacheKey, t);
   return t;
 }
 
-function score(answer, task) {
-  const hits = task.checks.filter((c) => c.re.test(answer)).map((c) => c.name);
-  const forbidHits = (task.forbid || []).filter((c) => c.re.test(answer)).map((c) => c.name);
-  return { passed: hits.length === task.checks.length && forbidHits.length === 0, hits, forbidHits, total: task.checks.length };
-}
-
-async function askOnce(system, user) {
+async function askOnce(system, user, config) {
   // 上游会挂住不返回（实测 >150s 无响应），必须自带超时，否则整轮挂死
   const ctl = new AbortController();
-  const timer = setTimeout(() => ctl.abort(), RESP_TIMEOUT);
+  const timer = setTimeout(() => ctl.abort(), config.timeout);
   let r;
   try {
-    r = await fetch(BASE.replace(/\/$/, '') + '/chat/completions', {
+    r = await fetch(config.baseUrl.replace(/\/$/, '') + '/chat/completions', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + KEY },
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + config.apiKey },
       body: JSON.stringify({
-        model: MODEL,
+        model: config.model,
         messages: [ { role: 'system', content: system }, { role: 'user', content: user } ],
-        temperature: TEMPERATURE,
+        temperature: config.temperature,
         // 混合思考模型（如 mimo-v2.6-flash）默认开思考：首 token 延迟高、单次可超 60s 撞上面的超时。
         // T2_DISABLE_THINKING=1 显式关闭（官方 OpenAI 兼容参数 thinking.type）；其他 provider 不带此参数，行为不变。
-        ...(process.env.T2_DISABLE_THINKING === '1' ? { thinking: { type: 'disabled' } } : {}),
+        ...(config.disableThinking ? { thinking: { type: 'disabled' } } : {}),
         // 部分思考模型（如 glm-5.3）不支持关思考、max 档单次远超 60s；T2_REASONING_EFFORT 透传官方
         // OpenAI 兼容参数 reasoning_effort（如 low）压低思考量以落进超时。未设时不带此参数，其他 provider 行为不变。
-        ...(process.env.T2_REASONING_EFFORT ? { reasoning_effort: process.env.T2_REASONING_EFFORT } : {}),
+        ...(config.reasoningEffort ? { reasoning_effort: config.reasoningEffort } : {}),
       }),
       signal: ctl.signal,
     });
   } catch (e) {
-    if (e.name === 'AbortError') throw new Error('timeout：60s 无响应（上游挂住）');
+    if (e.name === 'AbortError') throw new Error(`timeout：${config.timeout}ms 无响应（上游挂住）`);
     throw e;
   } finally {
     clearTimeout(timer);
@@ -102,9 +86,10 @@ async function askOnce(system, user) {
 }
 
 // 免费档上游常 503/限流 —— 瞬时错误退避重试，重试耗尽才当失败
-async function ask(system, user, attempt = 1) {
+async function ask(system, user, config, attempt = 1) {
   try {
-    return await askOnce(system, user);
+    const answer = await askOnce(system, user, config);
+    return { ...answer, attempts: attempt };
   } catch (e) {
     if (e.toolCall) throw e; // 工具调用不是抖动，重试无用
     const transient = /503|overloaded|429|rate|timeout|ECONN|fetch failed|ETIMEDOUT/i.test(e.message);
@@ -112,8 +97,9 @@ async function ask(system, user, attempt = 1) {
       const wait = 2000 * attempt;
       console.error(`  (transient: ${e.message.slice(0, 70)} — ${wait}ms 后重试 ${attempt}/4)`);
       await new Promise((res) => setTimeout(res, wait));
-      return ask(system, user, attempt + 1);
+      return ask(system, user, config, attempt + 1);
     }
+    e.attempts = attempt;
     throw e;
   }
 }
@@ -130,54 +116,140 @@ function wilson(k, n, z = 1.96) {
 }
 
 async function run() {
-  const activeTasks = ONLY_TASK.length ? TASKS.filter((t) => ONLY_TASK.includes(t.id)) : TASKS.filter((t) => !t.poisonOnly && !t.genrePilot);
-  const arms = ONLY_ARM === 'both' ? ['control', 'treated'] : [ONLY_ARM];
-  // 展开成 cell 列表，严格按 task -> arm -> trial 顺序；skillText 每个 task 预载一次（无额外 IO）。
+  const config = parseConfig({ argv: process.argv.slice(2), env: process.env, cwd: process.cwd() });
+  const activeTasks = config.tasks;
+  const arms = config.arms;
+  const BASE = config.baseUrl;
+  const MODEL = config.model;
+  const TRIALS = config.trials;
+  const SKILL_ROOT = config.skillRoot;
+  const DUMP = config.dump;
+  const DRY = config.dry;
+  // 展开成 cell 列表，严格按 task -> prompt -> arm -> trial 顺序；skillText 每个 task 预载一次（无额外 IO）。
+  // locked-v3 只有 base，cell 布局与历史运行一致；paired-v4 为锁尺任务追加 variant-1。
   const cells = [];
+  const skillTexts = {};
   for (const task of activeTasks) {
-    const skillText = DRY ? '(dry-run 不读技能正文)' : loadSkill(task.skill, task.inject);
-    for (const arm of arms) {
-      for (let t = 1; t <= TRIALS; t++) cells.push({ task, arm, t, skillText });
+    const skillText = DRY ? '(dry-run 不读技能正文)' : loadSkill(task.skill, task.inject, SKILL_ROOT);
+    if (!DRY) skillTexts[task.id] = skillText;
+    for (const promptId of promptIdsFor(task, config.ruler)) {
+      for (const arm of arms) {
+        for (let t = 1; t <= TRIALS; t++) cells.push({ task, promptId, arm, t, skillText });
+      }
     }
   }
+  cells.forEach((cell, cellIndex) => { cell.cellIndex = cellIndex; });
 
-  // 每个 cell 独立产出其 row（形状与串行版逐字节一致）；DRY 为纯同步，不触网。
-  const runCell = async ({ task, arm, t, skillText }) => {
+  // 续跑：先按当前配置重算指纹，与目录里的 manifest 一致才允许复用；有效 cell 跳过，错误 cell 重跑。
+  let resumeRows = null;
+  let existingManifest = null;
+  if (config.resumeDir) {
+    const loaded = loadRun(config.resumeDir);
+    assertResumeFingerprint(loaded.manifest, buildManifest({ config, skillTexts }).fingerprint);
+    resumeRows = loaded.rows;
+    existingManifest = loaded.manifest;
+  }
+  const store = createRunStore({
+    config,
+    skillTexts,
+    dir: config.resumeDir ?? undefined,
+    manifest: existingManifest ?? undefined,
+  });
+
+  // 配对调度：同一 task/prompt/trial 的两臂由运行指纹决定先后，抵消“总是 control 先发”的偏差；
+  // cell_index 仍是 canonical（task x arm x trial），展示与汇总顺序不随调度顺序变化。
+  const schedule = [];
+  const seen = new Set();
+  if (arms.length === 2) {
+    const pairs = new Map();
+    for (const cell of cells) {
+      const key = `${cell.task.id}|${cell.promptId}|${cell.t}`;
+      if (!pairs.has(key)) pairs.set(key, []);
+      pairs.get(key).push(cell);
+    }
+    for (const [key, pair] of pairs) {
+      for (const arm of orderArmsForPair(key, store.fingerprint)) {
+        const cell = pair.find((item) => item.arm === arm);
+        if (cell && !seen.has(cell.cellIndex)) {
+          seen.add(cell.cellIndex);
+          schedule.push(cell);
+        }
+      }
+    }
+  }
+  for (const cell of cells) {
+    if (!seen.has(cell.cellIndex)) schedule.push(cell);
+  }
+
+  // 每个 cell 独立产出并立即追加证据；results 仍按 canonical index 呈现。
+  const runCell = async ({ task, promptId, arm, t, skillText, cellIndex }) => {
+    const startedAt = Date.now();
+    // dry 只为证明判分管线有判别力：同一 task 的两个提示共用同一段预置答案。
+    // 真跑必须发出该 prompt_id 对应的实际文本，否则变体只是记在 manifest 里、没有送进模型。
+    const userPrompt = DRY ? task.prompt : promptFor(task, promptId);
     let ans, err = null;
-    if (DRY) ans = { content: DRY_ANSWERS[task.id][arm], pt: null, ct: null };
+    if (DRY) ans = { content: DRY_ANSWERS[task.id][arm], pt: null, ct: null, attempts: 0 };
     else {
-      try { ans = await ask(systemFor(arm, task.skill, skillText), task.prompt); }
+      try { ans = await ask(systemFor(arm, task.skill, skillText), userPrompt, config); }
       catch (e) { err = e; }
     }
+    const base = {
+      run_id: store.runId,
+      cell_index: cellIndex,
+      pair_id: `${task.id}|${promptId}|${t}`,
+      task: task.id,
+      prompt_id: promptId,
+      arm,
+      trial: t,
+      latency_ms: Date.now() - startedAt,
+      finished_at: new Date().toISOString(),
+    };
     if (err) {
       const kind = err.toolCall ? 'TOOLCALL' : 'ERROR';
-      if (DUMP) console.log('\n===== ' + task.id + ' / ' + arm + ' / t' + t + ' ===== [' + kind + '] ' + err.message.slice(0, 120) + '\n');
-      return { task: task.id, arm, trial: t, passed: false, hits: [], chars: 0, pt: null, ct: null, err: kind, msg: err.message.slice(0, 90) };
+      if (DUMP) console.log('\n===== ' + task.id + ' / ' + promptId + ' / ' + arm + ' / t' + t + ' ===== [' + kind + '] ' + err.message.slice(0, 120) + '\n');
+      return { ...base, answer: '', passed: false, hits: [], forbidHits: [], chars: 0, pt: null, ct: null, attempts: err.attempts ?? 1, err: kind, msg: err.message.slice(0, 90) };
     }
     const s = score(ans.content, task);
-    if (DUMP) console.log('\n===== ' + task.id + ' / ' + arm + ' / t' + t + ' =====\n' + ans.content + '\n');
-    return { task: task.id, arm, trial: t, passed: s.passed, hits: s.hits, forbidHits: s.forbidHits, chars: ans.content.length, pt: ans.pt, ct: ans.ct };
+    if (DUMP) console.log('\n===== ' + task.id + ' / ' + promptId + ' / ' + arm + ' / t' + t + ' =====\n' + ans.content + '\n');
+    return { ...base, answer: ans.content, passed: s.passed, hits: s.hits, forbidHits: s.forbidHits, chars: ans.content.length, pt: ans.pt, ct: ans.ct, attempts: ans.attempts, err: null, msg: null };
   };
 
   // 并发跑（上限 K，默认 4，国内 API 有 RPM 限制；瞬时 503/429 已由 ask() 退避重试兜底）。
   // 结果按原始下标写回，rows 顺序 = 串行版 task x arm x trial，并发完成先后不影响呈现顺序与任何读数口径。
-  const K = Math.max(1, Math.min(Number(process.env.T2_CONCURRENCY) || 4, cells.length || 1));
   const results = new Array(cells.length);
+  let activeSchedule = schedule;
+  let resumeState = null;
+  if (resumeRows) {
+    resumeState = resumePlan(schedule, resumeRows);
+    for (const [cellIndex, existingRow] of resumeState.skip) results[cellIndex] = existingRow;
+    activeSchedule = resumeState.pending;
+    console.log(`resume = ${config.resumeDir}（复用有效 ${resumeState.skip.size}，补跑 ${activeSchedule.length}）`);
+  }
+  const K = Math.min(config.concurrency, activeSchedule.length || 1);
   let cursor = 0;
-  const worker = async () => { while (cursor < cells.length) { const i = cursor++; results[i] = await runCell(cells[i]); } };
+  const worker = async () => {
+    while (cursor < activeSchedule.length) {
+      const cell = activeSchedule[cursor++];
+      const row = await runCell(cell);
+      results[cell.cellIndex] = row;
+      store.appendCell(row);
+    }
+  };
   await Promise.all(Array.from({ length: K }, () => worker()));
   const rows = results;
+  const summary = store.finalize(rows, (input) => summarizeRows(input, { seed: store.fingerprint }));
+  console.log('evidence = ' + path.relative(process.cwd(), store.dir));
   // 汇总：有效率只算"拿到了文本答案"的调用；工具调用/报错单列，不混进通过率
   const by = (arm) => rows.filter((r) => r.arm === arm);
   const valid = (arm) => by(arm).filter((r) => !r.err);
   const rate = (arm) => { const a = valid(arm); return a.length ? a.filter((r) => r.passed).length / a.length : 0; };
   console.log('provider = ' + (DRY ? 'DRY (零调用)' : `${MODEL} @ ${BASE}`));
-  console.log('tasks    = ' + activeTasks.map((t) => t.id + '(' + t.skill + ')').join(', ') + '   trials/arm = ' + TRIALS + '   arms = ' + arms.join('+'));
+  console.log('tasks    = ' + activeTasks.map((t) => t.id + '(' + t.skill + ')').join(', ') + '   ruler = ' + config.ruler + '   trials/arm = ' + TRIALS + '   arms = ' + arms.join('+'));
   console.log('-'.repeat(72));
   for (const r of rows) {
     const status = r.err ? r.err : (r.passed ? 'PASS' : 'FAIL');
     const label = [...r.hits, ...(r.forbidHits || []).map((x) => '!' + x)].join(',');
-    console.log(`[${r.arm.padEnd(7)}] ${r.task.padEnd(18)} t${r.trial}  ${status.padEnd(8)}  ${label || (r.err ? r.msg : '(无命中)')}  ${r.chars}c`);
+    console.log(`[${r.arm.padEnd(7)}] ${r.task.padEnd(18)} ${r.prompt_id.padEnd(9)} t${r.trial}  ${status.padEnd(8)}  ${label || (r.err ? r.msg : '(无命中)')}  ${r.chars}c`);
   }
   console.log('-'.repeat(72));
   for (const arm of arms) {
@@ -192,6 +264,14 @@ async function run() {
   const nOf = (a) => valid(a).length;
   const ci = (a) => { const [lo, hi] = wilson(kOf(a), nOf(a)); return `[${Math.round(lo * 100)},${Math.round(hi * 100)}]`; };
   console.log(`control pass = ${(c * 100).toFixed(0)}% ${ci('control')}   treated pass = ${(t * 100).toFixed(0)}% ${ci('treated')}   lift = ${((t - c) * 100).toFixed(0)} 个百分点`);
+  // 配对口径：同一 task/prompt/trial 的 delta 先按题取均值，再对 task 做聚类 bootstrap。
+  if (summary.paired) {
+    const p = summary.paired;
+    console.log(`paired lift = ${p.lift} pp（完整配对 ${p.completePairs} / 不完整 ${p.incompletePairs}，tasks=${p.tasks}）  区间 [${p.ci[0]},${p.ci[1]}]（task-cluster bootstrap ${p.bootstrapSamples} 次，seed=${p.seed.slice(0, 8)}）`);
+  } else {
+    console.log('paired lift = n/a（单臂或少于两个任务，拒绝输出伪精确区间）');
+  }
+  console.log(`sensitivity lift = ${summary.sensitivity.lift} pp（失败计入：control ${(summary.sensitivity.control.passRate * 100).toFixed(0)}% / treated ${(summary.sensitivity.treated.passRate * 100).toFixed(0)}%）`);
   // ---- token 成本采集（非流式响应里的 usage；DRY 或 provider 未回 usage 则显式标 n/a，绝不编 0）----
   const tokCells = (arm) => valid(arm).filter((r) => r.pt != null && r.ct != null).map((r) => r.pt + r.ct);
   const ctT = tokCells('control'), ttT = tokCells('treated');
@@ -235,10 +315,16 @@ async function run() {
              : '=> 本轮坏技能未把 treated 带偏（模型可能忽略注入），读数本身仍是有用信息'));
     if (DRY && !ok) process.exitCode = 1; // fail-closed：常驻自检拒绝放行
   } else {
-    console.log(t - c > 0
+    const ok = t - c > 0;
+    console.log(ok
       ? '=> 两臂可区分（管线有判别力）'
       : (DRY ? '=> dry 两臂不可区分：判据或预置答案有问题，先修'
         : (anyErr ? '=> 两臂未拉开（本轮存在工具调用/报错，读数不完整，先看上方分布）' : '=> 本任务上两臂未拉开：换更贴技能的任务，或加 trial')));
+    if (DRY && !ok) process.exitCode = 1;
+  }
+  if (!DRY && anyErr) {
+    console.log('=> INCOMPLETE：存在 ERROR/TOOLCALL，结果已保留，退出码 2');
+    process.exitCode = 2;
   }
   return { c, t };
 }

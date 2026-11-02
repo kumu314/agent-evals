@@ -23,7 +23,7 @@
 
 | 套件 | 测什么 | 成本 | 需要什么 |
 |---|---|---|---|
-| [`fleet-eval/`](fleet-eval/) | 技能库全量回归：frontmatter 合法性、重名、垃圾残留、多端扇出一致性（11 项断言） | 0 API 调用 | 一个磁盘上的技能库 |
+| [`fleet-eval/`](fleet-eval/) | 技能库全量回归：frontmatter 合法性、重名、垃圾残留、多端扇出一致性（12 项断言） | 0 API 调用 | 一个磁盘上的技能库 |
 | [`merge-eval/`](merge-eval/) | 批量内容合入：未触及的条目必须逐字节不变（7 项断言） | 0 API 调用 | 一个被测仓库 |
 | [`t2/`](t2/) | 技能增益 A/B：同一批任务，带技能 vs 不带技能，比通过率 | 需要 API key | 任意 OpenAI 兼容端点 |
 
@@ -54,7 +54,7 @@ flowchart TB
   end
 
   subgraph SU["三个子套件，按要不要花钱分层"]
-    F["fleet-eval：技能库全量回归，11 项断言，0 API 调用"]
+    F["fleet-eval：技能库全量回归，12 项断言，0 API 调用"]
     M["merge-eval：内容合入逐字节不变，7 项断言，0 API 调用"]
     T["t2：技能增益 A/B，需要 API key"]
   end
@@ -154,6 +154,12 @@ node demo/run.mjs
 # 1) T2 判分管线自检：零 API 调用，证明"判据真的能区分好坏答案"
 node t2/smoke-ab.mjs --dry
 
+# 1b) 对刚跑出的运行目录做离线报告：只读 manifest + rows，不联网
+node t2/report.mjs out/t2/<run-id> --format markdown
+
+# 1c) 用示例配置固定参数跑 dry（配置只含公开字段，密钥仍只从环境读）
+node t2/smoke-ab.mjs --config t2/t2.example.json --dry
+
 # 2) fleet-eval：先指到你的技能库根目录，再跑
 FLEET_SHARED=/path/to/sharedskills node fleet-eval/fleet-eval.mjs --trials 2
 
@@ -163,7 +169,7 @@ MERGE_BASE_REF=<合入前的 sha> MERGE_TOUCHED_IDS='["id1","id2"]' \
 node merge-eval/merge-eval.mjs --trials 2
 ```
 
-各套件的环境变量、判据清单、以及踩过的坑，都在各子目录的 README 里。
+`--dry` 结束时会打印 `evidence = out/t2/<run-id>`，那串目录名就是上面的 `<run-id>`；`out/` 已被 Git 忽略。各套件的环境变量、判据清单、以及踩过的坑，都在各子目录的 README 里。
 
 ## 跑起来长什么样
 
@@ -173,66 +179,27 @@ node merge-eval/merge-eval.mjs --trials 2
 node t2/smoke-ab.mjs --dry
 ```
 
-它用预置答案走一遍判分管线，证明「判据真的能把好答案和坏答案分开」。完整输出：
+它用预置答案走一遍判分管线，证明「判据真的能把好答案和坏答案分开」。输出示例（中间任务行省略，`<run-id>` 是本次运行目录）：
 
 ```text
+evidence = out/t2/<run-id>
 provider = DRY (零调用)
-tasks    = bad-advice-runtime(runtime-resolution-and-abi), merge-verify-ritual(silent-failure-triage), guard-never-fires(silent-failure-triage), tautology-detector(criterion-self-evidence-check), changed-but-not-visible(stale-output-layers), stale-line-citation(line-anchor-drift), hash-mismatch-invisible(text-encoding-forensics), push-hung-recheck(git-push-fake-timeout)   trials/arm = 3   arms = control+treated
+tasks    = bad-advice-runtime(runtime-resolution-and-abi), merge-verify-ritual(silent-failure-triage), guard-never-fires(silent-failure-triage), tautology-detector(criterion-self-evidence-check), changed-but-not-visible(stale-output-layers), stale-line-citation(line-anchor-drift), hash-mismatch-invisible(text-encoding-forensics), push-hung-recheck(git-push-fake-timeout)   ruler = locked-v3   trials/arm = 3   arms = control+treated
 ------------------------------------------------------------------------
-[control] bad-advice-runtime t1  FAIL      (无命中)  61c
-[control] bad-advice-runtime t2  FAIL      (无命中)  61c
-[control] bad-advice-runtime t3  FAIL      (无命中)  61c
-[treated] bad-advice-runtime t1  PASS      否定便条,钉死手法  185c
-[treated] bad-advice-runtime t2  PASS      否定便条,钉死手法  185c
-[treated] bad-advice-runtime t3  PASS      否定便条,钉死手法  185c
-[control] merge-verify-ritual t1  FAIL      (无命中)  70c
-[control] merge-verify-ritual t2  FAIL      (无命中)  70c
-[control] merge-verify-ritual t3  FAIL      (无命中)  70c
-[treated] merge-verify-ritual t1  PASS      退出码0无信息,REST口径陷阱,正确复核  229c
-[treated] merge-verify-ritual t2  PASS      退出码0无信息,REST口径陷阱,正确复核  229c
-[treated] merge-verify-ritual t3  PASS      退出码0无信息,REST口径陷阱,正确复核  229c
-[control] guard-never-fires  t1  FAIL      (无命中)  92c
-[control] guard-never-fires  t2  FAIL      (无命中)  92c
-[control] guard-never-fires  t3  FAIL      (无命中)  92c
-[treated] guard-never-fires  t1  PASS      列序根因,恒假死代码  175c
-[treated] guard-never-fires  t2  PASS      列序根因,恒假死代码  175c
-[treated] guard-never-fires  t3  PASS      列序根因,恒假死代码  175c
-[control] tautology-detector t1  FAIL      (无命中)  38c
-[control] tautology-detector t2  FAIL      (无命中)  38c
-[control] tautology-detector t3  FAIL      (无命中)  38c
-[treated] tautology-detector t1  PASS      硬编码脆弱,换统计量  90c
-[treated] tautology-detector t2  PASS      硬编码脆弱,换统计量  90c
-[treated] tautology-detector t3  PASS      硬编码脆弱,换统计量  90c
-[control] changed-but-not-visible t1  FAIL      (无命中)  70c
-[control] changed-but-not-visible t2  FAIL      (无命中)  70c
-[control] changed-but-not-visible t3  FAIL      (无命中)  70c
-[treated] changed-but-not-visible t1  PASS      身份非缓存,分层定位,取证读数  229c
-[treated] changed-but-not-visible t2  PASS      身份非缓存,分层定位,取证读数  229c
-[treated] changed-but-not-visible t3  PASS      身份非缓存,分层定位,取证读数  229c
-[control] stale-line-citation t1  FAIL      (无命中)  54c
-[control] stale-line-citation t2  FAIL      (无命中)  54c
-[control] stale-line-citation t3  FAIL      (无命中)  54c
-[treated] stale-line-citation t1  PASS      行号不稳定,改数字治标,换内容锚  192c
-[treated] stale-line-citation t2  PASS      行号不稳定,改数字治标,换内容锚  192c
-[treated] stale-line-citation t3  PASS      行号不稳定,改数字治标,换内容锚  192c
-[control] hash-mismatch-invisible t1  FAIL      (无命中)  57c
-[control] hash-mismatch-invisible t2  FAIL      (无命中)  57c
-[control] hash-mismatch-invisible t3  FAIL      (无命中)  57c
-[treated] hash-mismatch-invisible t1  PASS      不可见字节,hexdump取证,diff会漏  238c
-[treated] hash-mismatch-invisible t2  PASS      不可见字节,hexdump取证,diff会漏  238c
-[treated] hash-mismatch-invisible t3  PASS      不可见字节,hexdump取证,diff会漏  238c
-[control] push-hung-recheck  t1  FAIL      (无命中)  73c
-[control] push-hung-recheck  t2  FAIL      (无命中)  73c
-[control] push-hung-recheck  t3  FAIL      (无命中)  73c
-[treated] push-hung-recheck t1  PASS      中断不等于失败,认远端读数,不信自述  263c
-[treated] push-hung-recheck t2  PASS      中断不等于失败,认远端读数,不信自述  263c
-[treated] push-hung-recheck t3  PASS      中断不等于失败,认远端读数,不信自述  263c
-------------------------------------------------------------------------
+[control] bad-advice-runtime base      t1  FAIL      (无命中)  61c
+[control] bad-advice-runtime base      t2  FAIL      (无命中)  61c
+[control] bad-advice-runtime base      t3  FAIL      (无命中)  61c
+[treated] bad-advice-runtime base      t1  PASS      否定便条,钉死手法  185c
+[treated] bad-advice-runtime base      t2  PASS      否定便条,钉死手法  185c
+[treated] bad-advice-runtime base      t3  PASS      否定便条,钉死手法  185c
+...
 control 有效 24/24（通过 0）  工具调用 0  报错 0
 treated 有效 24/24（通过 24）  工具调用 0  报错 0
 control pass = 0% [0,14]   treated pass = 100% [86,100]   lift = 100 个百分点
 => 两臂可区分（管线有判别力）
 ```
+
+`evidence = ...` 那行就是 `report.mjs` 的入参目录；对同一份 `manifest.json` + `rows.jsonl`，`--format json` 的输出与 `summary.json` 逐字段一致。
 
 ## 目录结构
 
@@ -240,7 +207,7 @@ control pass = 0% [0,14]   treated pass = 100% [86,100]   lift = 100 个百分�
 agent-evals/
 ├── demo/              一键 demo：自带样例技能库，先红后绿（零配置）
 ├── docs/              eval-primitives.md —— 三套件实证提炼的五条评测原语
-├── fleet-eval/        技能库回归（11 项断言，零 API 成本）
+├── fleet-eval/        技能库回归（12 项断言，零 API 成本）
 │   ├── fleet-eval.mjs
 │   ├── drill-a1a2.mjs     反向验证脚本：证明新增断言真的会红
 │   ├── fleet-eval.allow.example.json  junk.absent 豁免白名单模板（真的那份不入库）

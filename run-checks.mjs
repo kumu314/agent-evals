@@ -4,6 +4,7 @@
 // 目的：把 README 里散文版的运行要求变成 `npm test` 一把跑；env 在进程内设置，
 //       不依赖 shell 的 `VAR=val cmd`（那种写法在 Windows cmd/PowerShell 下会崩）。
 // 任一子检查非零 => 本脚本非零退出（fail-closed），打印每步 rc 台账。
+import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -11,19 +12,51 @@ import { fileURLToPath } from 'node:url';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)));
 const NODE = process.execPath;
 
-// 每项：{ name, argv, env }，argv 相对 ROOT 由子进程 cwd 解析
+// 全 .mjs 语法检查：与 CI 的 find | xargs node --check 同一集合（node_modules/.git/out 除外）。
+const SYNTAX_SKIP = new Set(['node_modules', '.git', 'out']);
+function collectMjs(dir) {
+  const out = [];
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (e.isDirectory()) {
+      if (!SYNTAX_SKIP.has(e.name)) out.push(...collectMjs(path.join(dir, e.name)));
+    } else if (e.name.endsWith('.mjs')) {
+      out.push(path.join(dir, e.name));
+    }
+  }
+  return out;
+}
+function checkOne(file) {
+  return new Promise((resolve) => {
+    const c = spawn(NODE, ['--check', file], { cwd: ROOT, stdio: 'ignore', windowsHide: true });
+    c.on('error', (e) => resolve({ rc: -1, err: e.message }));
+    c.on('close', (rc) => resolve({ rc }));
+  });
+}
+async function checkAllSyntax() {
+  const files = collectMjs(ROOT).sort();
+  for (const file of files) {
+    const r = await checkOne(file);
+    if (r.rc !== 0) throw new Error(`语法错误: ${path.relative(ROOT, file)}`);
+  }
+  console.log(`  已检查 ${files.length} 个 .mjs`);
+}
+
+// 每项：{ name, argv, env } 或 { name, fn }，argv 相对 ROOT 由子进程 cwd 解析
 const STEPS = [
+  { name: '全部 .mjs 语法检查（node --check）', fn: checkAllSyntax },
   { name: 'selftest（lib/parsers 单测，node:test）', argv: ['--test', 'selftest.mjs'] },
+  { name: 'T2 模块自检（配置、运行状态，node:test）', argv: ['--test', 't2/selftest.mjs'] },
   { name: 'T2 判分管线自检（零 API）', argv: ['t2/smoke-ab.mjs', '--dry'] },
   { name: 'T2 负向臂自检×2（runtime-ABI + race-sleep，零 API）', argv: ['t2/smoke-ab.mjs', '--dry'], env: { T2_TASK: 'bad-advice-runtime--poison,race-sleep-poison' } },
   { name: 'T2 领域/知识体裁试点自检（正向技能须抬高 treated，零 API）', argv: ['t2/smoke-ab.mjs', '--dry'], env: { T2_TASK: 'cache-nocache-vs-nostore' } },
   { name: 'demo 自检（样例库 → 先红后绿）', argv: ['demo/run.mjs', '--assert'] },
   { name: 'merge-eval 负例 drill（零 API 零网络）', argv: ['merge-eval/drill-merge-eval.mjs'] },
   {
-    name: 'fleet-eval core 作用域自检（样例库，摘掉 fanout 5 项）',
+    name: 'fleet-eval core 作用域自检（样例库，摘掉 fanout/tooling 6 项）',
     argv: ['fleet-eval/fleet-eval.mjs', '--trials', '1'],
     env: { FLEET_SHARED: path.join(ROOT, 'demo', 'fixture-clean'), FLEET_SCOPE: 'core' },
   },
+  { name: 'fleet-eval 负例 drill（A1/A2/S1/S2，零 API 零网络）', argv: ['fleet-eval/drill-a1a2.mjs'] },
   {
     name: 'README 数字双向指纹守卫（中英镜像 + 概要可溯源）',
     argv: ['guard-readme-numbers.mjs'],
@@ -39,6 +72,9 @@ const STEPS = [
 ];
 
 function run(step) {
+  if (step.fn) {
+    return step.fn().then(() => ({ step, rc: 0 })).catch((err) => ({ step, rc: 1, err: err.message }));
+  }
   return new Promise((resolve) => {
     const c = spawn(NODE, step.argv, {
       cwd: ROOT,

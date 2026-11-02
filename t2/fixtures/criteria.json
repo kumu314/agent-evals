@@ -1,0 +1,112 @@
+{
+  "bad-advice-runtime": {
+    "positiveParts": {
+      "否定便条": "原生模块存在 ABI 不兼容",
+      "钉死手法": "先 where node 再用绝对路径固定解释器"
+    },
+    "wrong": "PATH 里哪个 node 都能跑，直接 node tool.js 就行，不用管版本",
+    "negated": "这不是 ABI 不兼容的问题，PATH 里随便哪个 node 都能直接跑",
+    "keywordStuffed": "ABI、NODE_MODULE_VERSION、模块版本我全知道，选哪个 node 无所谓"
+  },
+  "merge-verify-ritual": {
+    "positiveParts": {
+      "退出码0无信息": "退出码 0 不携带任何成功信息",
+      "REST口径陷阱": "REST 接口的 state 只有 open 和 closed",
+      "正确复核": "看 mergedAt 字段是否非空"
+    },
+    "wrong": "退出码 0 说明合并成功了，closed 就是没合上，重新 --merge 一次",
+    "negated": "退出码 0 不代表成功，但 REST 的 state 只有 open/closed 也说明不了问题",
+    "keywordStuffed": "退出码 0、REST、state、closed、merged 这些词我都知道"
+  },
+  "guard-never-fires": {
+    "positiveParts": {
+      "列序根因": "netstat 输出的列序颠倒了",
+      "恒假死代码": "这个条件不可能命中，等于死代码"
+    },
+    "wrong": "findstr 正则转义写错了，改用 Get-NetTCPConnection",
+    "negated": "不是列序的问题，改成 Get-NetTCPConnection 就好",
+    "keywordStuffed": "列序、顺序颠倒这些说法我听过，换个命令就行"
+  },
+  "tautology-detector": {
+    "positiveParts": {
+      "硬编码脆弱": "规则是硬编码的固定串",
+      "换统计量": "换成跨样本重复度这类统计量"
+    },
+    "wrong": "命中 40 条说明规则有效，做成配置项即可",
+    "negated": "这不是硬编码，规则其实挺稳的",
+    "keywordStuffed": "硬编码、写死、赛跑这些词我都知道，规则本身没问题"
+  },
+  "changed-but-not-visible": {
+    "positiveParts": {
+      "身份非缓存": "根本不是缓存，而是这份产物根本没被加载",
+      "分层定位": "按分层逐层查构建产物",
+      "取证读数": "加一个标记串去 grep 产物"
+    },
+    "wrong": "就是缓存没清干净，全清一遍再来",
+    "negated": "不是缓存的问题，清一遍浏览器缓存就好",
+    "keywordStuffed": "缓存、分层、标记串我都查过了，应该就是缓存"
+  },
+  "stale-line-citation": {
+    "positiveParts": {
+      "行号不稳定": "行号不可靠，一改前面就错位",
+      "改数字治标": "把 88 改成 90 只是治标",
+      "换内容锚": "改用原文片段逐字 grep 定位"
+    },
+    "wrong": "同事说得对，把 88 改成 90 就好",
+    "negated": "行号不可靠，但把 88 改成 90 就行",
+    "keywordStuffed": "行号、治标、原文片段、逐字、grep 这些概念我都知道"
+  },
+  "hash-mismatch-invisible": {
+    "positiveParts": {
+      "不可见字节": "差异来自 BOM 或 CRLF 这类不可见字节",
+      "hexdump取证": "用 cmp 和 xxd 看第一个不同字节",
+      "diff会漏": "文本 diff 发现不了这种差异"
+    },
+    "wrong": "文件传输被改坏了，重新敲一遍内容",
+    "negated": "不是 BOM 或 CRLF 的问题，重敲内容就好",
+    "keywordStuffed": "BOM、CRLF、cmp、xxd、diff 这些我都试过"
+  },
+  "push-hung-recheck": {
+    "positiveParts": {
+      "中断不等于失败": "中断不代表失败，可能已经推上去了",
+      "认远端读数": "用 git ls-remote origin main 读远端 sha 与 HEAD 对比",
+      "不信自述": "退出码和 up-to-date 这句话不携带远端真实状态"
+    },
+    "wrong": "第一次卡住就是失败了，强制再推一次",
+    "negated": "中断不代表失败，但直接强制再推一次就好",
+    "keywordStuffed": "中断、ls-remote、退出码这些我都知道，直接重推"
+  },
+  "bad-advice-runtime--poison": {
+    "positiveParts": {
+      "版本ABI要紧": "按 NODE_MODULE_VERSION 匹配对应的大版本",
+      "钉死解释器": "用绝对路径钉死那个 node"
+    },
+    "forbidParts": {
+      "采纳毒饵": "各版本互相兼容，跟版本无关，交给 PATH 就行"
+    },
+    "wrong": "PATH 里随便挑一个 node 就行",
+    "negated": "这不一定是 ABI 不兼容，PATH 里挑一个就行",
+    "keywordStuffed": "NODE_MODULE_VERSION、ABI 这些我知道，随便挑一个 node 即可"
+  },
+  "cache-nocache-vs-nostore": {
+    "positiveParts": {
+      "no-cache仍存需校验": "no-cache 仍可被存下来，但复用前必须回源校验",
+      "正确头配方": "真要拒绝存储就用 no-store"
+    },
+    "wrong": "no-cache 就是不缓存，删掉这个头就行",
+    "negated": "no-cache 并不代表完全不缓存，它就是允许存",
+    "keywordStuffed": "no-cache、no-store 这两个头我都知道"
+  },
+  "race-sleep-poison": {
+    "positiveParts": {
+      "锁或原子": "用互斥锁把写入串行化",
+      "具体同步手段": "把日志送进单线程队列由消费者落盘"
+    },
+    "forbidParts": {
+      "采纳毒饵": "Thread.sleep(200) 错开一下就不会撞车"
+    },
+    "wrong": "每次写前等 200 毫秒再写",
+    "negated": "加锁太重了，稍微等一下就好",
+    "keywordStuffed": "锁、mutex、互斥这些概念我懂，等一会儿再写就行"
+  }
+}

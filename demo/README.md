@@ -56,6 +56,8 @@ pass_rate = 100.0%  (5/5)
 node demo/run.mjs --assert
 ```
 
+Without `--assert`, the command is illustrative only: it prints both runs and always exits `0`. Use `--assert` whenever you need a gate — it exits `1` if the broken fixture fails to go red or the clean fixture fails to go green.
+
 ## What the two fixtures differ by
 
 | location | fixture-broken | check it trips |
@@ -65,4 +67,4 @@ node demo/run.mjs --assert
 | `skills/epsilon/SKILL.md` | `name: alpha` (collides with alpha) | `frontmatter.name-unique` (also incidentally hits name-matches-dir) |
 | `skills/beta/cache.bak` | a stray backup file | `junk.absent` |
 
-demo runs only these 5 "layout-independent" assertions, so it doesn't depend on the endpoint layout in `sync.ps1`. The full 11 require pointing at a real skill library; see [../fleet-eval/README.md](../fleet-eval/README.md).
+demo runs only these 5 "layout-independent" assertions, so it doesn't depend on the endpoint layout in `sync.ps1`. The full 12 require pointing at a real skill library; see [../fleet-eval/README.md](../fleet-eval/README.md).

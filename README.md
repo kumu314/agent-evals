@@ -23,7 +23,7 @@ Three sub-suites, layered by whether they cost money:
 
 | suite | what it tests | cost | what you need |
 |---|---|---|---|
-| [`fleet-eval/`](fleet-eval/) | Full skill-library regression: frontmatter validity, duplicate names, leftover junk, multi-endpoint fan-out consistency (11 assertions) | 0 API calls | a skill library on disk |
+| [`fleet-eval/`](fleet-eval/) | Full skill-library regression: frontmatter validity, duplicate names, leftover junk, multi-endpoint fan-out consistency (12 assertions) | 0 API calls | a skill library on disk |
 | [`merge-eval/`](merge-eval/) | Bulk content merge: entries you did not touch must stay byte-for-byte identical (7 assertions) | 0 API calls | a repo under test |
 | [`t2/`](t2/) | Skill-gain A/B: same set of tasks, with vs. without the skill injected, compare pass rates | needs an API key | any OpenAI-compatible endpoint |
 
@@ -54,7 +54,7 @@ flowchart TB
   end
 
   subgraph SU["Three suites, layered by whether they cost money"]
-    F["fleet-eval: skill-library regression, 11 assertions, 0 API calls"]
+    F["fleet-eval: skill-library regression, 12 assertions, 0 API calls"]
     M["merge-eval: content-merge byte identity, 7 assertions, 0 API calls"]
     T["t2: skill-gain A/B, needs an API key"]
   end
@@ -154,6 +154,12 @@ node demo/run.mjs
 # 1) t2 scoring-pipeline self-check: zero API calls, proves "the criteria really can tell good answers from bad"
 node t2/smoke-ab.mjs --dry
 
+# 1b) offline report on the run just written: reads manifest + rows only, no network
+node t2/report.mjs out/t2/<run-id> --format markdown
+
+# 1c) run the dry check with the example config (public fields only; the key still comes from the environment)
+node t2/smoke-ab.mjs --config t2/t2.example.json --dry
+
 # 2) fleet-eval: point it at your skill-library root first, then run
 FLEET_SHARED=/path/to/sharedskills node fleet-eval/fleet-eval.mjs --trials 2
 
@@ -163,7 +169,7 @@ MERGE_BASE_REF=<pre-merge sha> MERGE_TOUCHED_IDS='["id1","id2"]' \
 node merge-eval/merge-eval.mjs --trials 2
 ```
 
-Each suite's environment variables, criteria list, and the pitfalls hit along the way are in the README inside each subdirectory.
+Each suite's environment variables, criteria list, and the pitfalls hit along the way are in the README inside each subdirectory. The `--dry` run prints `evidence = out/t2/<run-id>` — that directory name is the `<run-id>` above, and `out/` is gitignored.
 
 ## What a run looks like
 
@@ -173,24 +179,27 @@ The one zero-config, free command (CI runs it too):
 node t2/smoke-ab.mjs --dry
 ```
 
-It walks the scoring pipeline with pre-set answers to prove "the criteria really can separate good answers from bad". Full output:
+It walks the scoring pipeline with pre-set answers to prove "the criteria really can separate good answers from bad". Output sample (middle task rows omitted; `<run-id>` is this run's directory):
 
 ```text
+evidence = out/t2/<run-id>
 provider = DRY (zero calls)
-tasks    = bad-advice-runtime(runtime-resolution-and-abi), merge-verify-ritual(silent-failure-triage), guard-never-fires(silent-failure-triage), tautology-detector(criterion-self-evidence-check), changed-but-not-visible(stale-output-layers), stale-line-citation(line-anchor-drift), hash-mismatch-invisible(text-encoding-forensics), push-hung-recheck(git-push-fake-timeout)   trials/arm = 3   arms = control+treated
+tasks    = bad-advice-runtime(runtime-resolution-and-abi), merge-verify-ritual(silent-failure-triage), guard-never-fires(silent-failure-triage), tautology-detector(criterion-self-evidence-check), changed-but-not-visible(stale-output-layers), stale-line-citation(line-anchor-drift), hash-mismatch-invisible(text-encoding-forensics), push-hung-recheck(git-push-fake-timeout)   ruler = locked-v3   trials/arm = 3   arms = control+treated
 ------------------------------------------------------------------------
-[control] bad-advice-runtime t1  FAIL      (no hit)  61c
-[control] bad-advice-runtime t2  FAIL      (no hit)  61c
-[control] bad-advice-runtime t3  FAIL      (no hit)  61c
-[treated] bad-advice-runtime t1  PASS      rejects-the-note,pins-the-technique  185c
-[treated] bad-advice-runtime t2  PASS      rejects-the-note,pins-the-technique  185c
-[treated] bad-advice-runtime t3  PASS      rejects-the-note,pins-the-technique  185c
+[control] bad-advice-runtime base      t1  FAIL      (no hit)  61c
+[control] bad-advice-runtime base      t2  FAIL      (no hit)  61c
+[control] bad-advice-runtime base      t3  FAIL      (no hit)  61c
+[treated] bad-advice-runtime base      t1  PASS      rejects-the-note,pins-the-technique  185c
+[treated] bad-advice-runtime base      t2  PASS      rejects-the-note,pins-the-technique  185c
+[treated] bad-advice-runtime base      t3  PASS      rejects-the-note,pins-the-technique  185c
 ...
 control valid 24/24 (passed 0)   tool calls 0   errors 0
 treated valid 24/24 (passed 24)  tool calls 0   errors 0
 control pass = 0% [0,14]   treated pass = 100% [86,100]   lift = 100 percentage points
 => the two arms are distinguishable (the pipeline has discriminative power)
 ```
+
+The `evidence = ...` line is the directory to pass to `report.mjs`; against the same `manifest.json` + `rows.jsonl`, its `--format json` output matches `summary.json` field by field.
 
 (Shown abbreviated; `--dry` uses fixed pre-set answers, so control scores 0 and treated scores 100 — it checks the ruler, not the model.)
 
@@ -200,7 +209,7 @@ control pass = 0% [0,14]   treated pass = 100% [86,100]   lift = 100 percentage 
 agent-evals/
 ├── demo/              one-command demo: bundled sample skill library, red first then green (zero config)
 ├── docs/              eval-primitives.md — the five eval primitives distilled from all three suites
-├── fleet-eval/        skill-library regression (11 assertions, zero API cost)
+├── fleet-eval/        skill-library regression (12 assertions, zero API cost)
 │   ├── fleet-eval.mjs
 │   ├── drill-a1a2.mjs     negative-verification script: proves new assertions really go red
 │   ├── fleet-eval.allow.example.json  junk.absent exemption allowlist template (the real one is not committed)

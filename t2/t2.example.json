@@ -1,0 +1,10 @@
+{
+  "ruler": "locked-v3",
+  "task": "bad-advice-runtime,merge-verify-ritual,guard-never-fires,tautology-detector,changed-but-not-visible,stale-line-citation,hash-mismatch-invisible,push-hung-recheck",
+  "trials": 3,
+  "arm": "both",
+  "outDir": "out/t2",
+  "temperature": 0,
+  "timeout": 60000,
+  "concurrency": 4
+}

@@ -1,4 +1,4 @@
-# agent-evals
+<h1><img src="assets/logo.svg" width="40" alt="agent-evals logo" /> agent-evals</h1>
 
 中文 | [English](README.md)
 
@@ -15,25 +15,18 @@
 
 > **一句话结论** — 在一把锁定的确定性 8 任务 A/B 尺子（`temperature=0`、AND 门判分）上，注入一条写得好的 skill 能抬升模型通过率。**11 个模型**的抬升跨度为 **+4 ~ +75 个百分点**——其中 10 个越过 +38，唯一的能力下限是 glm-4-flash。没有 LLM 裁判、不靠感觉：这里每个数字都是一条可重跑的断言。
 
-**适合谁：** 要给自己的 agent 技能或内容流水线加一道"会响亮且可复现地报红"回归闸的团队——三套件里有两套零 API 成本即可跑。**不适合谁：** 想找一套拿 LLM 当裁判打分的量表的人——本仓库刻意不这么做。
+**适合谁：** 要给自己的 agent 技能或内容流水线加一道「会响亮且可复现地报红」回归闸的团队——三套件里有两套零 API 成本即可跑。**不适合谁：** 想找一套拿 LLM 当裁判打分的量表的人——本仓库刻意不这么做。
 
 把「AI agent 干活到底靠不靠谱」写成可机械判定的断言，每次改动后跑一遍，掉了就报红。
 
-三个子套件，按"要不要花钱"分层：
-
-| 套件 | 测什么 | 成本 | 需要什么 |
-|---|---|---|---|
-| [`fleet-eval/`](fleet-eval/) | 技能库全量回归：frontmatter 合法性、重名、垃圾残留、多端扇出一致性（12 项断言） | 0 API 调用 | 一个磁盘上的技能库 |
-| [`merge-eval/`](merge-eval/) | 批量内容合入：未触及的条目必须逐字节不变（7 项断言） | 0 API 调用 | 一个被测仓库 |
-| [`t2/`](t2/) | 技能增益 A/B：同一批任务，带技能 vs 不带技能，比通过率 | 需要 API key | 任意 OpenAI 兼容端点 |
-
 ## 目录
 
+- [快速开始](#快速开始)
+- [盒子里有什么](#盒子里有什么)
 - [全景图](#全景图)
-- [为什么这样拆](#为什么这样拆)
 - [t2 测什么、不测什么](#t2-测什么不测什么)
 - [t2 完整证据链](docs/t2-results.zh-CN.md)
-- [快速开始](#快速开始)
+- [可复现契约](#可复现契约)
 - [跑起来长什么样](#跑起来长什么样)
 - [目录结构](#目录结构)
 - [怎么参与](#怎么参与)
@@ -41,6 +34,49 @@
 - [一处诚实说明](#一处诚实说明)
 - [谁做的、给谁看](#谁做的给谁看)
 - [许可](#许可)
+
+## 快速开始
+
+**无需构建、无需安装**——零运行时依赖，clone 下来直接跑。
+
+需要 Node ≥ 20.11（用了 `import.meta.dirname` 与内置 `fetch`）。运行时门槛已写进 `package.json` 的 `engines`。
+
+```bash
+# 0) 一键看效果：拿仓库自带的样例技能库跑，先红后绿（零配置、零 API）
+node demo/run.mjs
+
+# 一键跑完全部零 API/零网络自检（等价于 CI，跨平台；env 在进程内设，不用 shell 前缀）
+npm test          # = node run-checks.mjs，逐步打印 rc 台账，任一失败即非零退出
+
+# 1) T2 判分管线自检：零 API 调用，证明「判据真的能区分好坏答案」
+node t2/smoke-ab.mjs --dry
+
+# 1b) 对刚跑出的运行目录做离线报告：只读 manifest + rows，不联网
+node t2/report.mjs out/t2/<run-id> --format markdown
+
+# 1c) 用示例配置固定参数跑 dry（配置只含公开字段，密钥仍只从环境读）
+node t2/smoke-ab.mjs --config t2/t2.example.json --dry
+
+# 2) fleet-eval：先指到你的技能库根目录，再跑
+FLEET_SHARED=/path/to/sharedskills node fleet-eval/fleet-eval.mjs --trials 2
+
+# 3) merge-eval：先指到被测仓库 + 合入前的 sha
+MERGE_REPO=/path/to/repo MERGE_REPO_SLUG=owner/repo \
+MERGE_BASE_REF=<合入前的 sha> MERGE_TOUCHED_IDS='["id1","id2"]' \
+node merge-eval/merge-eval.mjs --trials 2
+```
+
+`--dry` 结束时会打印 `evidence = out/t2/<run-id>`，那串目录名就是上面的 `<run-id>`；`out/` 已被 Git 忽略。各套件的环境变量、判据清单、以及踩过的坑，都在各子目录的 README 里。
+
+## 盒子里有什么
+
+三个子套件，按「要不要花钱」分层：
+
+| 套件 | 测什么 | 成本 | 需要什么 |
+|---|---|---|---|
+| [`fleet-eval/`](fleet-eval/) | 技能库全量回归：frontmatter 合法性、重名、垃圾残留、多端扇出一致性（12 项断言） | 0 API 调用 | 一个磁盘上的技能库 |
+| [`merge-eval/`](merge-eval/) | 批量内容合入：未触及的条目必须逐字节不变（7 项断言） | 0 API 调用 | 一个被测仓库 |
+| [`t2/`](t2/) | 技能增益 A/B：同一批任务，带技能 vs 不带技能，比通过率 | 需要 API key | 任意 OpenAI 兼容端点 |
 
 ## 全景图
 
@@ -77,17 +113,17 @@ flowchart TB
 三套件共享同一套判断口径，也是这个仓库存在的理由：
 
 1. **能确定性判定，就不要请 LLM 当裁判。** 三个套件的 grader 全部是确定性断言——正则、md5、字节比对、退出码、远端 ref 真值。没有一个用模型打分：既贵，又不可复现。
-2. **证据必须来自外部可复读的物证。** 判据只认远端 API 读数、文件 sha256、磁盘真实状态，不认"我跑完了""命令没报错"这类自述。
-3. **面向"必须稳定"的资产判 `pass^k`，不判 `pass@k`。** 技能库和内容库的正确性是红线，要求 N 次里每次都过，而不是蒙对一次就算。
+2. **证据必须来自外部可复读的物证。** 判据只认远端 API 读数、文件 sha256、磁盘真实状态，不认「我跑完了」「命令没报错」这类自述。
+3. **面向「必须稳定」的资产判 `pass^k`，不判 `pass@k`。** 技能库和内容库的正确性是红线，要求 N 次里每次都过，而不是蒙对一次就算。
 4. **判据本身也会出错，看到红先怀疑判据。** merge-eval 第一轮跑出来的红全是它自己的 bug。这条写进了两个子套件的 README，因为它是这里最贵的经验。
 
-这三条不是原创，来源见 [fleet-eval/research/](fleet-eval/research/)（Anthropic《Demystifying evals for AI agents》、NVIDIA 的 agent evaluation 实践）。
+这四条不是原创，来源见 [fleet-eval/research/](fleet-eval/research/)（Anthropic《Demystifying evals for AI agents》、NVIDIA 的 agent evaluation 实践）。
 
 ## t2 测什么、不测什么
 
-t2 是**模型档位选型工具**，不是"技能通用有效性"工具。它回答的问题是："把这条 skill 注入某个模型档位，能不能让该档位在该任务上从 FAIL 变 PASS"——这个答案**高度依赖模型能力上限**。
+t2 是**模型档位选型工具**，不是「技能通用有效性」工具。它回答的问题是：「把这条 skill 注入某个模型档位，能不能让该档位在该任务上从 FAIL 变 PASS」——这个答案**高度依赖模型能力上限**。
 
-**注入不等于激活。** treated 臂是把技能正文直接放进上下文；真实 harness 只加载技能的元数据，由模型自己决定要不要激活。所以这里的每个数字都是"技能最多能买到多少"的上限，不是你在生产里会看到的激活率。
+**注入不等于激活。** treated 臂是把技能正文直接放进上下文；真实 harness 只加载技能的元数据，由模型自己决定要不要激活。所以这里的每个数字都是「技能最多能买到多少」的上限，不是你在生产里会看到的激活率。
 
 **被测技能范围。** 这里 t2 被测的七颗技能全是「验证纪律 / 失效取证」体裁——每颗编码一条具体、可判定的操作。另有两种体裁在这把锁定尺子之外：领域知识有一个小体裁试点，负向臂（毒饵）则从反方向检验打分器（均见下文「锁尺之外的两条臂」）。创意、风格完全不在本测范围，所以上面的 lift 表只是这个体裁的证据，不是「技能普遍有用」的断言。
 
@@ -134,42 +170,47 @@ t2 是**模型档位选型工具**，不是"技能通用有效性"工具。它�
 
 ### 使用建议
 
-- 想验证"我的 skill 到底有没有用"-> 先确保测试档位 >= 目标部署档位，否则测的是模型上限而不是 skill 质量。
-- 想选"该给 agent 配哪个模型档位"-> 同一条 skill 在不同档位 lift 的差异就是选型信号。
-- 不要把"lift = 0"解读为"skill 没用"——它只是说"这个档位读不懂"。
+- 想验证「我的 skill 到底有没有用」-> 先确保测试档位 >= 目标部署档位，否则测的是模型上限而不是 skill 质量。
+- 想选「该给 agent 配哪个模型档位」-> 同一条 skill 在不同档位 lift 的差异就是选型信号。
+- 不要把「lift = 0」解读为「skill 没用」——它只是说「这个档位读不懂」。
 
-## 快速开始
+## 可复现契约
 
-**无需构建、无需安装**——零运行时依赖，clone 下来直接跑。
+一次运行只有别人能重读才有价值。这里把两件事钉死，而不是留成默认：
 
-需要 Node ≥ 20.11（用了 `import.meta.dirname` 与内置 `fetch`）。运行时门槛已写进 `package.json` 的 `engines`。
+**退出码**
 
-```bash
-# 一键跑完全部零 API/零网络自检（等价于 CI，跨平台；env 在进程内设，不用 shell 前缀）
-npm test          # = node run-checks.mjs，逐步打印 rc 台账，任一失败即非零退出
+| 码 | 含义 |
+|---|---|
+| `0` | COMPLETE —— 每个请求的 cell 都跑完，证据已落盘 |
+| `1` | fatal：配置坏了、判据坏了，或证据无法读取/升级 |
+| `2` | INCOMPLETE —— 运行确实执行了，但至少一个 cell 以 ERROR / TOOLCALL 收尾 |
 
-# 0) 一键看效果：拿仓库自带的样例技能库跑，先红后绿（零配置、零 API）
-node demo/run.mjs
+`2` 不是 harness 的失败：它表示模型或端点行为异常，证据目录仍然值得归档。`1` 意味着这次运行完全不可信。
 
-# 1) T2 判分管线自检：零 API 调用，证明"判据真的能区分好坏答案"
-node t2/smoke-ab.mjs --dry
+**Schema 与证据**
 
-# 1b) 对刚跑出的运行目录做离线报告：只读 manifest + rows，不联网
-node t2/report.mjs out/t2/<run-id> --format markdown
+`schema_version = 1` 会写进 `manifest.json`、`summary.json` 和 `report.md`。版本不匹配时，`--resume` 与 `report.mjs` 直接退 `1`，而不是静默迁移。每次运行落在 `out/t2/<run-id>/`，含四个文件：
 
-# 1c) 用示例配置固定参数跑 dry（配置只含公开字段，密钥仍只从环境读）
-node t2/smoke-ab.mjs --config t2/t2.example.json --dry
+| 文件 | 内容 |
+|---|---|
+| `manifest.json` | 公开配置、prompt、技能与判据的 sha256、运行指纹 |
+| `rows.jsonl` | 每个 cell 一行，cell 跑完即追加 |
+| `summary.json` | 由 rows 重算得出 |
+| `report.md` | 人可读的摘要 |
 
-# 2) fleet-eval：先指到你的技能库根目录，再跑
-FLEET_SHARED=/path/to/sharedskills node fleet-eval/fleet-eval.mjs --trials 2
+密钥从不写进其中任何一个。用 `--resume` 续跑时，只复用指纹匹配的 cell；其余一律重跑，且 `rows.jsonl` 是只追加的。
 
-# 3) merge-eval：先指到被测仓库 + 合入前的 sha
-MERGE_REPO=/path/to/repo MERGE_REPO_SLUG=owner/repo \
-MERGE_BASE_REF=<合入前的 sha> MERGE_TOUCHED_IDS='["id1","id2"]' \
-node merge-eval/merge-eval.mjs --trials 2
+一个最小 CI 形状（零 API 成本）：
+
+```yaml
+- uses: actions/setup-node@v4
+  with: { node-version: '20.11' }
+- run: npm test
+- run: node --test t2/selftest.mjs
+- run: T2_TASK=bad-advice-runtime--poison,race-sleep-poison node t2/smoke-ab.mjs --dry
+- run: node fleet-eval/drill-a1a2.mjs
 ```
-
-`--dry` 结束时会打印 `evidence = out/t2/<run-id>`，那串目录名就是上面的 `<run-id>`；`out/` 已被 Git 忽略。各套件的环境变量、判据清单、以及踩过的坑，都在各子目录的 README 里。
 
 ## 跑起来长什么样
 
@@ -201,10 +242,13 @@ control pass = 0% [0,14]   treated pass = 100% [86,100]   lift = 100 个百分�
 
 `evidence = ...` 那行就是 `report.mjs` 的入参目录；对同一份 `manifest.json` + `rows.jsonl`，`--format json` 的输出与 `summary.json` 逐字段一致。
 
+（以上为节选；`--dry` 用的是固定的预置答案，所以 control 得 0、treated 得 100——它验的是尺子，不是模型。）
+
 ## 目录结构
 
 ```
 agent-evals/
+├── assets/            logo.svg + 首屏主视觉
 ├── demo/              一键 demo：自带样例技能库，先红后绿（零配置）
 ├── docs/              eval-primitives.md —— 三套件实证提炼的五条评测原语
 ├── fleet-eval/        技能库回归（12 项断言，零 API 成本）
@@ -220,7 +264,12 @@ agent-evals/
 ├── selftest.mjs       lib/parsers.mjs 的单元测试（node:test，零依赖）
 └── t2/                技能增益 A/B（需要 API key）
     ├── smoke-ab.mjs
-    └── skills/        锁尺七颗验证纪律技能，另有两颗负向臂毒饵与一颗领域知识试点（均自研，MIT）
+    ├── report.mjs         离线报告，只读 manifest + rows
+    ├── selftest.mjs       t2 各模块的单元 + 集成测试
+    ├── t2.example.json    公开配置示例（不含密钥）
+    ├── lib/               config / grader / stats / store / prompt-variants
+    ├── fixtures/          criteria.json —— 正向、负向与毒饵对照
+    └── skills/            锁尺七颗验证纪律技能，另有两颗负向臂毒饵与一颗领域知识试点（均自研，MIT）
 ```
 
 ## 怎么参与
@@ -239,17 +288,17 @@ agent-evals/
 - **越出单一体裁。** 七颗锁尺技能全是「验证纪律 / 失效取证」。`cache-nocache-vs-nostore`（领域知识）是第一个体裁试点；再加体裁，lift 表才可能从「本体裁的证据」往「可迁移」推一步。
 - **收窄统计。** 榜首各行是 n=24 的单次跑，Wilson 区间因而偏宽。重复跑能把方向性 lift 变成效应量——它要花 API 钱，所以保持按需手动触发。
 - **守住天花板的诚实。** 模型档位会下架、会重发；结果文档逐行钉住思考配置与抓取日期，让每个数字能被重新验证，或被显式标注为过期。
-- **抓到已经扇到端点上的垃圾。** `junk.absent` 只扫源树、`endpoints.skillmd-parity` 只比对 `SKILL.md`，两者都看不到「某条排除规则生效前就扇出去、如今赖在某个端点上」的垃圾。加一条端点侧 junk 扫描（对每个 target 跑同一套 `excludeDirs` 口径）就能补上这个盲区——它刚在作者自己的库上被一次真扫暴露出来。
+- **抓到已经扇到端点上的垃圾。** `junk.absent` 只扫源树、`endpoints.skillmd-parity` 只比 `SKILL.md`；两者都看不见「在排除规则出现之前就扇出去、现已滞留在某个端点上的垃圾」。补一遍端点侧扫描——同一套 `excludeDirs`、逐个端点跑——正好补上作者自己技能库刚暴露出的这个盲区。
 
 ## 一处诚实说明
 
-`fleet-eval` 与 `merge-eval` 是从作者自己的两个真实项目里长出来的：一个共享技能库（240+ 颗技能、4 个扇出端点），一个内容站点的批量入库流程。它们的判据和踩坑记录都来自真实事故，所以文档里保留了大量"本机实测"的具体读数——这些不是设计目标，是现场证据。
+`fleet-eval` 和 `merge-eval` 来自作者自己的两个真实项目：一个共享技能库（240+ 技能、4 个扇出端点）和一个内容站的批量灌库流水线。它们的判据与坑清单都来自真实事故，所以文档里保留了很多「在这台机器上实测」的具体读数——那些不是设计目标，是现场证据。
 
 ## 谁做的、给谁看
 
-我（[@kumu314](https://github.com/kumu314)）给自己搭的，顺手开源出来。
+由我（[@kumu314](https://github.com/kumu314)）为自己的日常使用而写，顺手开源。
 
-适合手里有「坏了就麻烦、又不想每次回归都再花一笔模型调用费」的资产的人——技能库、内容库、多端分发的配置。不适合把 evals 当榜单刷的人。
+适合手里握着「坏了很烦、但又不愿每轮回归都再付一次模型调用费」这类资产的人——技能库、内容库、多端分发配置。不适合把评测当榜单刷的人。
 
 ## 许可
 

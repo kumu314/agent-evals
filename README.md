@@ -1,4 +1,4 @@
-# agent-evals
+<h1><img src="assets/logo.svg" width="40" alt="agent-evals logo" /> agent-evals</h1>
 
 English | [中文](README.zh-CN.md)
 
@@ -19,6 +19,56 @@ English | [中文](README.zh-CN.md)
 
 Turn "how reliable are AI agents at real work" into machine-checkable assertions, run them after every change, and get a red flag the moment something slips.
 
+## Table of contents
+
+- [Quick start](#quick-start)
+- [What is in the box](#what-is-in-the-box)
+- [How it fits together](#how-it-fits-together)
+- [What t2 does and does not test](#what-t2-does-and-does-not-test)
+- [Full t2 evidence trail](docs/t2-results.md)
+- [Reproducibility contract](#reproducibility-contract)
+- [What a run looks like](#what-a-run-looks-like)
+- [Directory layout](#directory-layout)
+- [Contributing](#contributing)
+- [Roadmap](#roadmap)
+- [One note of honesty](#one-note-of-honesty)
+- [License](#license)
+
+## Quick start
+
+**No build step, nothing to install** — zero runtime dependencies; clone and run.
+
+Requires Node ≥ 20.11 (uses `import.meta.dirname` and the built-in `fetch`). The runtime floor is declared in `package.json` under `engines`.
+
+```bash
+# See it work first: the bundled sample skill library goes red, then green (zero config, zero API)
+node demo/run.mjs
+
+# Run every zero-API / zero-network self-check in one shot (equivalent to CI, cross-platform)
+npm test          # = node run-checks.mjs, prints an rc ledger step by step, non-zero exit on any failure
+
+# t2 scoring-pipeline self-check: zero API calls, proves the criteria can tell good answers from bad
+node t2/smoke-ab.mjs --dry
+
+# Offline report on the run just written: reads manifest + rows only, no network
+node t2/report.mjs out/t2/<run-id> --format markdown
+
+# Run the dry check with the example config (public fields only; the key still comes from the environment)
+node t2/smoke-ab.mjs --config t2/t2.example.json --dry
+
+# fleet-eval: point it at your skill-library root first, then run
+FLEET_SHARED=/path/to/sharedskills node fleet-eval/fleet-eval.mjs --trials 2
+
+# merge-eval: point it at the repo under test + the pre-merge sha
+MERGE_REPO=/path/to/repo MERGE_REPO_SLUG=owner/repo \
+MERGE_BASE_REF=<pre-merge sha> MERGE_TOUCHED_IDS='["id1","id2"]' \
+node merge-eval/merge-eval.mjs --trials 2
+```
+
+The `--dry` run prints `evidence = out/t2/<run-id>` — that directory name is the `<run-id>` above, and `out/` is gitignored. Each suite's environment variables, criteria list, and the pitfalls hit along the way are in the README inside each subdirectory.
+
+## What is in the box
+
 Three sub-suites, layered by whether they cost money:
 
 | suite | what it tests | cost | what you need |
@@ -26,21 +76,6 @@ Three sub-suites, layered by whether they cost money:
 | [`fleet-eval/`](fleet-eval/) | Full skill-library regression: frontmatter validity, duplicate names, leftover junk, multi-endpoint fan-out consistency (12 assertions) | 0 API calls | a skill library on disk |
 | [`merge-eval/`](merge-eval/) | Bulk content merge: entries you did not touch must stay byte-for-byte identical (7 assertions) | 0 API calls | a repo under test |
 | [`t2/`](t2/) | Skill-gain A/B: same set of tasks, with vs. without the skill injected, compare pass rates | needs an API key | any OpenAI-compatible endpoint |
-
-## Table of contents
-
-- [How it fits together](#how-it-fits-together)
-- [Why it is split this way](#why-it-is-split-this-way)
-- [What t2 does and does not test](#what-t2-does-and-does-not-test)
-- [Full t2 evidence trail](docs/t2-results.md)
-- [Quick start](#quick-start)
-- [What a run looks like](#what-a-run-looks-like)
-- [Directory layout](#directory-layout)
-- [Contributing](#contributing)
-- [Roadmap](#roadmap)
-- [One note of honesty](#one-note-of-honesty)
-- [Who made this, who it is for](#who-made-this-who-it-is-for)
-- [License](#license)
 
 ## How it fits together
 
@@ -138,38 +173,43 @@ Two arms live outside the locked ruler above and are deliberately kept out of th
 - Picking "which model tier should my agent use"? -> the same skill's lift across tiers is exactly the selection signal.
 - Do not read "lift = 0" as "the skill is useless" — it only says "this tier cannot parse it".
 
-## Quick start
+## Reproducibility contract
 
-**No build step, nothing to install** — zero runtime dependencies; clone and run.
+A run is only useful if someone else can re-read it. Two things are pinned rather than left implicit:
 
-Requires Node ≥ 20.11 (uses `import.meta.dirname` and the built-in `fetch`). The runtime floor is declared in `package.json` under `engines`.
+**Exit codes**
 
-```bash
-# Run every zero-API / zero-network self-check in one shot (equivalent to CI, cross-platform; env is set in-process, no shell prefix needed)
-npm test          # = node run-checks.mjs, prints an rc ledger step by step, non-zero exit on any failure
+| code | meaning |
+|---|---|
+| `0` | COMPLETE — every requested cell ran and the evidence is written |
+| `1` | fatal: bad config, a broken criterion, or evidence that cannot be read/upgraded |
+| `2` | INCOMPLETE — the run really executed but at least one cell ended in ERROR / TOOLCALL |
 
-# 0) See it work in one command: run against the sample skill library shipped in the repo, red first then green (zero config, zero API)
-node demo/run.mjs
+`2` is not a failure of the harness: it says the model or the endpoint misbehaved, and the evidence directory is still worth archiving. `1` means do not trust the run at all.
 
-# 1) t2 scoring-pipeline self-check: zero API calls, proves "the criteria really can tell good answers from bad"
-node t2/smoke-ab.mjs --dry
+**Schema and evidence**
 
-# 1b) offline report on the run just written: reads manifest + rows only, no network
-node t2/report.mjs out/t2/<run-id> --format markdown
+`schema_version = 1` is written into `manifest.json`, `summary.json`, and `report.md`. A version mismatch makes `--resume` and `report.mjs` exit `1` instead of silently migrating. Each run lives in `out/t2/<run-id>/` with four files:
 
-# 1c) run the dry check with the example config (public fields only; the key still comes from the environment)
-node t2/smoke-ab.mjs --config t2/t2.example.json --dry
+| file | contents |
+|---|---|
+| `manifest.json` | public config, prompts, skill and criterion sha256, run fingerprint |
+| `rows.jsonl` | one line per cell, appended as cells finish |
+| `summary.json` | recomputed from rows |
+| `report.md` | human-readable summary |
 
-# 2) fleet-eval: point it at your skill-library root first, then run
-FLEET_SHARED=/path/to/sharedskills node fleet-eval/fleet-eval.mjs --trials 2
+The key is never written to any of them. Resuming with `--resume` only reuses cells whose fingerprint matches; anything else is re-run, and `rows.jsonl` is append-only.
 
-# 3) merge-eval: point it at the repo under test + the pre-merge sha
-MERGE_REPO=/path/to/repo MERGE_REPO_SLUG=owner/repo \
-MERGE_BASE_REF=<pre-merge sha> MERGE_TOUCHED_IDS='["id1","id2"]' \
-node merge-eval/merge-eval.mjs --trials 2
+A minimal CI shape (zero API cost):
+
+```yaml
+- uses: actions/setup-node@v4
+  with: { node-version: '20.11' }
+- run: npm test
+- run: node --test t2/selftest.mjs
+- run: T2_TASK=bad-advice-runtime--poison,race-sleep-poison node t2/smoke-ab.mjs --dry
+- run: node fleet-eval/drill-a1a2.mjs
 ```
-
-Each suite's environment variables, criteria list, and the pitfalls hit along the way are in the README inside each subdirectory. The `--dry` run prints `evidence = out/t2/<run-id>` — that directory name is the `<run-id>` above, and `out/` is gitignored.
 
 ## What a run looks like
 
@@ -207,6 +247,7 @@ The `evidence = ...` line is the directory to pass to `report.mjs`; against the 
 
 ```
 agent-evals/
+├── assets/            logo.svg + hero banner
 ├── demo/              one-command demo: bundled sample skill library, red first then green (zero config)
 ├── docs/              eval-primitives.md — the five eval primitives distilled from all three suites
 ├── fleet-eval/        skill-library regression (12 assertions, zero API cost)
@@ -222,7 +263,12 @@ agent-evals/
 ├── selftest.mjs       unit tests for lib/parsers.mjs (node:test, zero dependencies)
 └── t2/                skill-gain A/B (needs an API key)
     ├── smoke-ab.mjs
-    └── skills/        seven ruler skills plus two negative-arm poisons and a domain-knowledge pilot (self-authored, MIT)
+    ├── report.mjs         offline report, reads manifest + rows only
+    ├── selftest.mjs       unit + integration tests for the t2 modules
+    ├── t2.example.json    public config example (no keys)
+    ├── lib/               config / grader / stats / store / prompt-variants
+    ├── fixtures/          criteria.json — positive, negative and poison controls
+    └── skills/            seven ruler skills plus two negative-arm poisons and a domain-knowledge pilot (self-authored, MIT)
 ```
 
 ## Contributing

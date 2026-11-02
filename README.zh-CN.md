@@ -68,6 +68,8 @@ node merge-eval/merge-eval.mjs --trials 2
 
 `--dry` 结束时会打印 `evidence = out/t2/<run-id>`，那串目录名就是上面的 `<run-id>`；`out/` 已被 Git 忽略。各套件的环境变量、判据清单、以及踩过的坑，都在各子目录的 README 里。
 
+两条 CI 说明：三平台矩阵里的 `fleet-eval` 跑的是 `FLEET_SCOPE=core`（6 项与布局无关的断言，零网络）。full scope 的 12 项断言要读一个带 `sync.ps1` 扇出的真实技能库，仓库里没有签入这样的夹具——所以上面那条 full scope 命令面向的是你自己的技能库，不是 demo 夹具。
+
 ## 盒子里有什么
 
 三个子套件，按「要不要花钱」分层：
@@ -77,6 +79,8 @@ node merge-eval/merge-eval.mjs --trials 2
 | [`fleet-eval/`](fleet-eval/) | 技能库全量回归：frontmatter 合法性、重名、垃圾残留、多端扇出一致性（12 项断言） | 0 API 调用 | 一个磁盘上的技能库 |
 | [`merge-eval/`](merge-eval/) | 批量内容合入：未触及的条目必须逐字节不变（7 项断言） | 0 API 调用 | 一个被测仓库 |
 | [`t2/`](t2/) | 技能增益 A/B：同一批任务，带技能 vs 不带技能，比通过率 | 需要 API key | 任意 OpenAI 兼容端点 |
+
+`t2/` 是这套技能增益 A/B harness 的内部代号。把它当标签读，不要从名字里推断它包含几样东西。
 
 ## 全景图
 
@@ -136,6 +140,8 @@ t2 是**模型档位选型工具**，不是「技能通用有效性」工具。�
 - **思考配置是一列真实信息，不是噪声。** 部分推理模型默认思考会撞破 harness 的 60s 超时，故以降级档跑（`reasoning_effort=low` / `thinking:disabled`）；其裸答下限是该档位的特性，不等于 native-max 能力。降级 / 关闭思考的逐型号原因，记在 [docs/t2-results.zh-CN.md](docs/t2-results.zh-CN.md)。
 
 ### 读数总览（锁定的 v2+v3 尺子）
+
+每一行都是**单次运行**（每臂 n=24）——lift 列按点估计读，不要当置信区间。
 
 | 供应商 | 模型 | control（裸答下限） | treated | lift | 思考配置 |
 |---|---|---|---|---|---|

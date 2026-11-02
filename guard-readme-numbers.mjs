@@ -8,6 +8,9 @@
 //       docs/t2-results.md 与 docs/t2-results.zh-CN.md 亦然。
 //   (2) 概要可溯源：README 里出现的每个数据 token，必须能在同语言明细文档里找到出处，
 //       防止概要凭空造数。
+//   (3) 榜单页防漂移：docs/index.html 静态区里的评测数字同样须可溯源到明细。
+//   (4) 首屏主视觉防漂移：assets/ 两张 hero-banner SVG 的文本数字须是同语言 README 的子集，
+//       且两张 SVG 的数字多重集相等——改 banner 却不同步 README 会 fail-closed。
 //   边界（重要）：本守卫只证明「数字一字未改」与「概要可溯源到明细」，不证明「数字本身正确」。
 //       它把 README 与明细 docs/t2-results.md 对齐；读数本身对不对，由 docs/t2-results.md 逐模型
 //       验证记录承担，本脚本对其内容正确性保持中立（把 +75 换成明细里真实存在的另一个数，仍会通过）。
@@ -29,6 +32,8 @@ const FILES = {
   detailEn: path.join('docs', 't2-results.md'),
   detailZh: path.join('docs', 't2-results.zh-CN.md'),
   board: path.join('docs', 'index.html'),
+  heroEn: path.join('assets', 'hero-banner.svg'),
+  heroZh: path.join('assets', 'hero-banner.zh-CN.svg'),
 };
 
 // 归一化：剔除图片、链接 URL 目标（保留锚文本）、行内代码、HTML 注释——
@@ -107,8 +112,37 @@ for (const { summary, detail, name } of [
   }
 }
 
+// (4) 首屏主视觉防漂移：剥离 SVG 标签后只留文本内容（title/desc/text 里的字），
+//     坐标、尺寸、渐变 offset 都在属性里，随标签一并剔除，不会误入指纹。
+{
+  const svgs = [
+    { rel: FILES.heroEn, summary: fp.readmeEn, name: 'hero-banner.svg' },
+    { rel: FILES.heroZh, summary: fp.readmeZh, name: 'hero-banner.zh-CN.svg' },
+  ];
+  const byName = {};
+  for (const { rel, summary, name } of svgs) {
+    const p = path.join(ROOT, rel);
+    if (!fs.existsSync(p)) {
+      problems.push(`${name} 不存在，无法执行首屏主视觉防漂移校验`);
+      continue;
+    }
+    const textOnly = fs.readFileSync(p, 'utf8').replace(/<[^>]*>/g, ' ');
+    const fpSvg = fingerprint(textOnly);
+    byName[name] = fpSvg;
+    if (fpSvg.size === 0) {
+      problems.push(`${name} 未提取到任何数据指纹（提取失败？拒绝静默放行）`);
+      continue;
+    }
+    const miss = [...fpSvg.keys()].filter((t) => !summary.has(t));
+    if (miss.length) problems.push(`${name} 有数字在同语言 README 中找不到出处：` + miss.join(', '));
+  }
+  const a = byName['hero-banner.svg'];
+  const b = byName['hero-banner.zh-CN.svg'];
+  if (a && b && !eq(a, b)) problems.push('两张首屏 SVG 的数据指纹不一致：' + multisetDiff(a, b).join('; '));
+}
+
 if (problems.length === 0) {
-  console.log(`[guard] 双向 token 指纹守卫通过：README 数据指纹 ${fp.readmeEn.size} 种、明细 ${fp.detailEn.size} 种；中英镜像逐一相等，概要数字全部可溯源到明细；榜单页 docs/index.html 数字同样受溯源约束。`);
+  console.log(`[guard] 双向 token 指纹守卫通过：README 数据指纹 ${fp.readmeEn.size} 种、明细 ${fp.detailEn.size} 种；中英镜像逐一相等，概要数字全部可溯源到明细；榜单页与两张首屏 SVG 的数字同样受溯源约束。`);
   process.exit(0);
 }
 console.error('[guard] 双向 token 指纹守卫失败（fail-closed）：');

@@ -67,6 +67,8 @@ node merge-eval/merge-eval.mjs --trials 2
 
 The `--dry` run prints `evidence = out/t2/<run-id>` — that directory name is the `<run-id>` above, and `out/` is gitignored. Each suite's environment variables, criteria list, and the pitfalls hit along the way are in the README inside each subdirectory.
 
+Two CI notes: the three-platform matrix runs `fleet-eval` at `FLEET_SCOPE=core` (6 layout-independent assertions, zero network). The full 12-assertion scope reads a real skill library with a `sync.ps1` fan-out, and no such fixture is checked in — the full-scope command above therefore targets your own library, not the demo fixture.
+
 ## What is in the box
 
 Three sub-suites, layered by whether they cost money:
@@ -76,6 +78,8 @@ Three sub-suites, layered by whether they cost money:
 | [`fleet-eval/`](fleet-eval/) | Full skill-library regression: frontmatter validity, duplicate names, leftover junk, multi-endpoint fan-out consistency (12 assertions) | 0 API calls | a skill library on disk |
 | [`merge-eval/`](merge-eval/) | Bulk content merge: entries you did not touch must stay byte-for-byte identical (7 assertions) | 0 API calls | a repo under test |
 | [`t2/`](t2/) | Skill-gain A/B: same set of tasks, with vs. without the skill injected, compare pass rates | needs an API key | any OpenAI-compatible endpoint |
+
+`t2/` is an internal codename for the skill-gain A/B harness. Read it as a label, not as a claim about how many things it contains.
 
 ## How it fits together
 
@@ -135,6 +139,8 @@ Every row shares one methodology, stated once here instead of repeated under eac
 - **Thinking config is a real column, not noise.** Some reasoning models blow past the harness's 60 s guard at default thinking, so they are run at a reduced setting (`reasoning_effort=low` / `thinking:disabled`); their floor is a property of that setting, not native-max capability. The per-model reasons for each reduced / disabled setting are recorded in [docs/t2-results.md](docs/t2-results.md).
 
 ### Headline results (locked v2+v3 ruler)
+
+Every row is a **single run** (n=24 per arm) — read the lift column as a point estimate, not a confidence interval.
 
 | provider | model | control (bare floor) | treated | lift | thinking config |
 |---|---|---|---|---|---|

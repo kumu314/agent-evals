@@ -2,7 +2,7 @@
 
 English | [中文](README.zh-CN.md)
 
-![agent-evals — deterministic evals for AI agents](assets/hero-banner.png)
+![agent-evals — deterministic evals for AI agents](assets/hero-banner.svg)
 
 [![ci](https://github.com/kumu314/agent-evals/actions/workflows/ci.yml/badge.svg)](https://github.com/kumu314/agent-evals/actions/workflows/ci.yml)
 [![license: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)

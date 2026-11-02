@@ -2,7 +2,7 @@
 
 中文 | [English](README.md)
 
-![agent-evals — 给 AI agent 的确定性评测](assets/hero-banner.png)
+![agent-evals — 给 AI agent 的确定性评测](assets/hero-banner.zh-CN.svg)
 
 [![ci](https://github.com/kumu314/agent-evals/actions/workflows/ci.yml/badge.svg)](https://github.com/kumu314/agent-evals/actions/workflows/ci.yml)
 [![license: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)

@@ -1,0 +1,136 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 560" width="1600" height="560" role="img" aria-labelledby="hero-title hero-desc">
+  <title id="hero-title">agent-evals — 给 AI agent 的确定性评测</title>
+  <desc id="hero-desc">锁定尺子上的确定性 A/B 评测，覆盖 11 个模型，技能增益为 +4 到 +75 个百分点。</desc>
+
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#070b14"/>
+      <stop offset="0.55" stop-color="#0b1220"/>
+      <stop offset="1" stop-color="#0a0f1c"/>
+    </linearGradient>
+
+    <radialGradient id="glow-cyan" cx="0.18" cy="0.06" r="0.62">
+      <stop offset="0" stop-color="#22d3ee" stop-opacity="0.20"/>
+      <stop offset="0.55" stop-color="#22d3ee" stop-opacity="0.05"/>
+      <stop offset="1" stop-color="#22d3ee" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glow-violet" cx="0.82" cy="0.95" r="0.60">
+      <stop offset="0" stop-color="#a855f7" stop-opacity="0.18"/>
+      <stop offset="1" stop-color="#a855f7" stop-opacity="0"/>
+    </radialGradient>
+
+    <pattern id="grid" width="48" height="48" patternUnits="userSpaceOnUse">
+      <path d="M48 0 H0 V48" fill="none" stroke="#334155" stroke-opacity="0.22" stroke-width="1"/>
+    </pattern>
+
+    <linearGradient id="bar-cyan" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0e7490"/>
+      <stop offset="1" stop-color="#22d3ee"/>
+    </linearGradient>
+    <linearGradient id="bar-violet" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#6d28d9"/>
+      <stop offset="1" stop-color="#a855f7"/>
+    </linearGradient>
+    <linearGradient id="bar-pink" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#be185d"/>
+      <stop offset="1" stop-color="#ec4899"/>
+    </linearGradient>
+
+    <linearGradient id="bar-gain" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#22d3ee"/>
+      <stop offset="0.5" stop-color="#a855f7"/>
+      <stop offset="1" stop-color="#ec4899"/>
+    </linearGradient>
+    <linearGradient id="num-gain" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#67e8f9"/>
+      <stop offset="0.55" stop-color="#c084fc"/>
+      <stop offset="1" stop-color="#f472b6"/>
+    </linearGradient>
+
+    <linearGradient id="hairline" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#22d3ee" stop-opacity="0.55"/>
+      <stop offset="0.45" stop-color="#a855f7" stop-opacity="0.30"/>
+      <stop offset="1" stop-color="#ec4899" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <!-- background -->
+  <rect width="1600" height="560" fill="url(#bg)"/>
+  <rect width="1600" height="560" fill="url(#grid)"/>
+  <rect width="1600" height="560" fill="url(#glow-cyan)"/>
+  <rect width="1600" height="560" fill="url(#glow-violet)"/>
+
+  <!-- logo mark -->
+  <g transform="translate(96 132)">
+    <rect x="0" y="27" width="14" height="21" rx="5" fill="url(#bar-cyan)"/>
+    <rect x="21" y="14.5" width="14" height="33.5" rx="5" fill="url(#bar-violet)"/>
+    <rect x="42" y="2" width="14" height="46" rx="5" fill="url(#bar-pink)"/>
+    <path d="M40.5 -16 L48 -8.5 L63 -23.5" fill="none" stroke="#34d399" stroke-width="5"
+          stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <!-- wordmark -->
+  <text x="200" y="196" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
+        font-size="66" font-weight="700" letter-spacing="-1.6" fill="#f8fafc">agent-evals</text>
+  <text x="200" y="242" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
+        font-size="23" letter-spacing="0.4" fill="#94a3b8">给 AI agent 的确定性评测</text>
+
+  <rect x="96" y="285" width="624" height="1.5" fill="url(#hairline)"/>
+
+  <!-- principles -->
+  <g font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
+     font-size="21" fill="#cbd5e1">
+    <circle cx="101" cy="332" r="4" fill="#22d3ee"/>
+    <text x="124" y="339">只用确定性判据 —— 绝不请 LLM 当裁判</text>
+    <circle cx="101" cy="374" r="4" fill="#a855f7"/>
+    <text x="124" y="381">证据必须外部可复读，不认自述</text>
+    <circle cx="101" cy="416" r="4" fill="#ec4899"/>
+    <text x="124" y="423">对必须稳定的资产判 pass^k</text>
+  </g>
+
+  <!-- A/B card -->
+  <g>
+    <rect x="812" y="96" width="692" height="372" rx="26" fill="#ffffff" fill-opacity="0.035"
+          stroke="#ffffff" stroke-opacity="0.09" stroke-width="1.5"/>
+    <rect x="813" y="97" width="690" height="370" rx="25" fill="none"
+          stroke="url(#hairline)" stroke-opacity="0.35" stroke-width="1"/>
+
+    <text x="852" y="152" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
+          font-size="16" font-weight="600" letter-spacing="3.2" fill="#8fa3bf">技能增益 A/B</text>
+    <text x="1464" y="152" text-anchor="end"
+          font-family="ui-monospace, 'SFMono-Regular', Consolas, 'Liberation Mono', monospace"
+          font-size="15" fill="#64748b">locked-v3</text>
+
+    <text x="852" y="200" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
+          font-size="14" font-weight="600" letter-spacing="2" fill="#94a3b8">不带技能</text>
+    <rect x="852" y="212" width="300" height="30" rx="15" fill="#223049" stroke="#3b4a66" stroke-width="1.2"/>
+
+    <text x="852" y="278" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
+          font-size="14" font-weight="600" letter-spacing="2" fill="#94a3b8">注入技能</text>
+    <rect x="852" y="290" width="520" height="30" rx="15" fill="url(#bar-gain)"/>
+    <rect x="852" y="290" width="520" height="30" rx="15" fill="none" stroke="#c084fc" stroke-opacity="0.45" stroke-width="1.2"/>
+
+    <text x="852" y="402" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
+          font-size="54" font-weight="700" letter-spacing="-1.4" fill="url(#num-gain)">+4 ~ +75 pp</text>
+    <text x="852" y="436" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
+          font-size="18" fill="#94a3b8">覆盖 11 个模型 · 每臂 n=24 次</text>
+  </g>
+
+  <!-- fact pills -->
+  <g font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
+     font-size="15" fill="#8fa3bf">
+    <rect x="96" y="450" width="146" height="34" rx="17" fill="#ffffff" fill-opacity="0.03" stroke="#334155"/>
+    <text x="169" y="472" text-anchor="middle">0 LLM judge</text>
+    <rect x="258" y="450" width="214" height="34" rx="17" fill="#ffffff" fill-opacity="0.03" stroke="#334155"/>
+    <text x="365" y="472" text-anchor="middle">3 套件里 2 套零成本</text>
+    <rect x="488" y="450" width="164" height="34" rx="17" fill="#ffffff" fill-opacity="0.03" stroke="#334155"/>
+    <text x="570" y="472" text-anchor="middle">11 个模型实测</text>
+  </g>
+
+  <!-- footer -->
+  <text x="96" y="520" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
+        font-size="18" fill="#64748b">零运行时依赖   ·   node ≥ 20.11   ·   MIT</text>
+  <text x="1504" y="520" text-anchor="end"
+        font-family="ui-monospace, 'SFMono-Regular', Consolas, 'Liberation Mono', monospace"
+        font-size="16" fill="#64748b">kumu314/agent-evals</text>
+</svg>
